@@ -1,8 +1,8 @@
-# ── 不進版控：記憶與對話紀錄 ─────────────────────────────────
-# 記憶是機器本地狀態，三個 agent 共用同一份實體。
+# ── Never committed: memory and transcripts ─────────────────────────────────
+# Memory is machine-local state, shared by the agents on this machine only.
 .claude/memory/
 
-# 逐字對話紀錄與各工具的本地狀態
+# Verbatim transcripts and per-tool local state
 .claude/projects/
 .claude/todos/
 .claude/shell-snapshots/
@@ -16,7 +16,7 @@
 .gemini/tmp/
 .gemini/settings.local.json
 
-# ── 編輯器 / OS 雜訊 ─────────────────────────────────────────
+# ── Editor / OS noise ───────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 *.swp
@@ -25,11 +25,11 @@ Thumbs.db
 .idea/
 .vscode/
 
-# ── 產生物 ───────────────────────────────────────────────────
+# ── Build output ────────────────────────────────────────────────────────────
 *.log
 node_modules/
 __pycache__/
 *.pyc
 
-# 測試探針輸出
+# Output of the hook test probe
 hook-probe.log

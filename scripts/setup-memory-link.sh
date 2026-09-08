@@ -59,8 +59,8 @@ encode_workspace_path() {
   # Strip trailing slash if any
   path="${path%/}"
   # Replace all "/" AND "_" with "-".
-  # 實測:/home/user/workspace/gitlab_runner 對應的目錄是
-  # -home-user-workspace-gitlab-runner（底線也會被換掉）。
+  # Verified: /home/user/workspace/gitlab_runner maps to the directory
+  # -home-user-workspace-gitlab-runner -- underscores are replaced too.
   path="${path//\//-}"
   printf '%s' "${path//_/-}"
 }
@@ -98,7 +98,8 @@ main() {
   fi
 
   local repo_memory="${workspace}/.claude/memory"
-  # 記憶不進版控，clone 後這個目錄不存在，直接建起來。
+  # Memory is not tracked, so this directory does not exist after a clone.
+  # Create it.
   if [[ ! -d "${repo_memory}" ]]; then
     if (( dry_run )); then
       info "dry-run: would mkdir -p ${repo_memory}"

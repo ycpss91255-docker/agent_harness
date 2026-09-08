@@ -1,22 +1,23 @@
-## 第三方技能出處
+# Third-party skills
 
-`.agents/skills/` 底下除了 `probe-marker`（本 repo 的驗證探針）之外，
-全部由 [`skills`](https://skills.sh) CLI 從下列來源安裝，授權皆為 MIT。
-版本以 `skills-lock.json` 的內容雜湊記錄。
+Everything under `.agents/skills/` except `probe-marker` (this repo's own
+verification probe) was installed by the [`skills`](https://skills.sh) CLI
+from the sources below. All are MIT licensed.
+Versions are pinned by content hash in `skills-lock.json`.
 
-### [ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd) — 1 個
+## [ayghri/i-have-adhd](https://github.com/ayghri/i-have-adhd) — 1 skills
 
 ```
 i-have-adhd
 ```
 
-### [humanlayer/skills](https://github.com/humanlayer/skills) — 1 個
+## [humanlayer/skills](https://github.com/humanlayer/skills) — 1 skills
 
 ```
 show-me
 ```
 
-### [mattpocock/skills](https://github.com/mattpocock/skills) — 25 個
+## [mattpocock/skills](https://github.com/mattpocock/skills) — 25 skills
 
 ```
 ask-matt
@@ -46,10 +47,13 @@ wizard
 writing-for-agents
 ```
 
-安裝或更新:
+## Installing and updating
 
 ```bash
-npx skills@latest add <owner>/<repo> --skill <name>   # 每個技能一個 --skill，逗號分隔無效
-npx skills@latest update                              # 依 skills-lock.json 更新
-npx skills@latest experimental_install                # clone 後還原全部技能
+# one --skill flag per skill; a comma-separated list is read as a single name
+npx skills@latest add <owner>/<repo> --skill <name> --skill <name>
+
+npx skills@latest update                 # update against skills-lock.json
+npx skills@latest experimental_install   # restore every skill after a clone
+npx skills@latest list                   # show what is installed
 ```

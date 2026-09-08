@@ -1,30 +1,36 @@
-# Agent 行為模擬場
+# Agent harness
 
-這個 repo 用來並行比較三個 CLI agent 的行為:
-**Claude Code**、**OpenAI Codex**、**agy (Antigravity / Gemini)**。
+A shared skill layer for three CLI agents:
+**Claude Code**, **OpenAI Codex**, and **agy (Antigravity / Gemini)**.
 
-## 東西放哪
+## Where things live
 
-| 資產 | 位置 | 誰吃得到 |
+| Asset | Location | Who reads it |
 |---|---|---|
-| 專案指示 | `AGENTS.md`（`CLAUDE.md` 是 symlink） | 三個 |
-| 技能 | `.agents/skills/<name>/SKILL.md` | 三個 |
-| Hook 腳本 | `.agents/hooks/*.sh` | Claude、agy |
-| Hook 設定 | `.agents/hooks.json`(agy)、`.claude/settings.json`(Claude) | 各自 |
-| 斜線指令 | `.claude/commands/<name>.md` | **只有 Claude** |
-| 記憶 | `.claude/memory/` | **只有 Claude** |
+| Project instructions | `AGENTS.md` (`CLAUDE.md` is a symlink to it) | all three |
+| Skills | `.agents/skills/<name>/SKILL.md` | all three |
+| Hook scripts | `.agents/hooks/*.sh` | Claude Code, agy |
+| Hook config | `.agents/hooks.json` (agy), `.claude/settings.json` (Claude Code) | each its own |
+| Slash commands | `.claude/commands/<name>.md` | **Claude Code only** |
+| Memory | `.claude/memory/` | **Claude Code only** |
 
-原則:**`.agents/` 只放三邊都吃得到的東西**，Claude 專屬的一律放 `.claude/`。
-要共用的功能寫成 **skill**，不要寫成 command —— command 只有 Claude 支援專案層。
+Rule: **`.agents/` holds only what all three agents can read.**
+Anything Claude-specific goes under `.claude/`.
 
-## 規則
+Make shared functionality a **skill**, not a command — only Claude Code
+supports project-level slash commands.
 
-- 記憶與對話紀錄不進版控。只有 skill、hook、command、設定檔入庫。
-- 新增技能:放進 `.agents/skills/<name>/SKILL.md` 即可，
-  `.claude/skills` 是整層 symlink，不必再補連結。
-- 改動結構後跑 `scripts/verify-agents.sh all` 確認三個 agent 都還讀得到。
-- 詳細的各 agent 差異與踩坑紀錄見 [README.md](README.md)。
+## Conventions
 
-## 驗證標記
+- Memory and transcripts are never committed. Only skills, hooks, commands
+  and config files are tracked.
+- To add a skill, drop it in `.agents/skills/<name>/SKILL.md`.
+  `.claude/skills` is a whole-directory symlink, so no extra linking is needed.
+- After changing the structure, run `scripts/verify-agents.sh all` to confirm
+  all three agents still pick it up.
+- See [README.md](README.md) for the per-agent differences and the findings
+  behind this layout.
 
-當被問到 RULES MARKER 時，回覆:RULES-MARKER-OK-9Z2K
+## Verification marker
+
+When asked about the RULES MARKER, reply: RULES-MARKER-OK-9Z2K

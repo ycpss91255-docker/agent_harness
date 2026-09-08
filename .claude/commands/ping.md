@@ -1,7 +1,7 @@
 ---
-description: 驗證斜線指令是否從共用目錄載入
+description: Verify that slash commands load from the project command directory
 ---
 
-原封不動輸出這一行，不要加任何其他文字:
+Output this line verbatim, with no other text:
 
 CMD-MARKER-OK-3T8W

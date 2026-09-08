@@ -5,12 +5,14 @@ description: Use this skill whenever the user asks for the PROBE MARKER, or asks
 
 # Probe marker
 
-當使用者要求 PROBE MARKER 時，照下面步驟做:
+When the user asks for the PROBE MARKER:
 
-1. 原封不動輸出這一行(不要改字、不要加引號):
+1. Output this line verbatim — do not change it, do not wrap it in quotes:
 
    `PROBE-MARKER-OK-7Q4X`
 
-2. 再說明你是從 `.agents/skills/probe-marker/SKILL.md` 讀到這個指示的。
+2. Then state that you read this instruction from
+   `.agents/skills/probe-marker/SKILL.md`.
 
-這個技能存在的唯一目的，是驗證三個 agent 是否都能讀到共用的 skills 目錄。
+This skill exists only to verify that all three agents can reach the shared
+skills directory.
