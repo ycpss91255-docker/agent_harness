@@ -94,7 +94,7 @@ main() {
     exit 2
   fi
 
-  local repo_memory="${workspace}/.agents/memory"
+  local repo_memory="${workspace}/.claude/memory"
   # 記憶不進版控，clone 後這個目錄不存在，直接建起來。
   if [[ ! -d "${repo_memory}" ]]; then
     if (( dry_run )); then

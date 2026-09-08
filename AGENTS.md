@@ -1,27 +1,29 @@
 # Agent 行為模擬場
 
 這個 repo 用來並行比較三個 CLI agent 的行為:
-**Claude Code**、**OpenAI Codex**、**Gemini CLI**。
+**Claude Code**、**OpenAI Codex**、**agy (Antigravity / Gemini)**。
 
-三者共用同一份技能、指令、hook 與記憶,差別只在各自的進入點。
+## 東西放哪
 
-## 共用資產在哪
-
-| 資產 | 唯一實體 | 各 agent 的入口 |
+| 資產 | 位置 | 誰吃得到 |
 |---|---|---|
-| 專案指示 | `AGENTS.md` | `CLAUDE.md` / `GEMINI.md`(symlink) |
-| 技能 | `.agents/skills/<name>/SKILL.md` | `.claude/skills/<name>`(symlink) |
-| 斜線指令 | `.agents/commands/<name>.md` | `.claude/commands/<name>.md`(symlink) |
-| Hook 腳本 | `.agents/hooks/*.sh` | `.claude/hooks`(symlink 整層) |
-| 記憶 | `.agents/memory/` | `.claude/memory`(symlink)、`~/.claude/projects/<slug>/memory` |
+| 專案指示 | `AGENTS.md`（`CLAUDE.md` 是 symlink） | 三個 |
+| 技能 | `.agents/skills/<name>/SKILL.md` | 三個 |
+| Hook 腳本 | `.agents/hooks/*.sh` | Claude、agy |
+| Hook 設定 | `.agents/hooks.json`(agy)、`.claude/settings.json`(Claude) | 各自 |
+| 斜線指令 | `.claude/commands/<name>.md` | **只有 Claude** |
+| 記憶 | `.claude/memory/` | **只有 Claude** |
 
-**改東西一律改 `.agents/` 底下的實體**,不要改 symlink 那一側。
+原則:**`.agents/` 只放三邊都吃得到的東西**，Claude 專屬的一律放 `.claude/`。
+要共用的功能寫成 **skill**，不要寫成 command —— command 只有 Claude 支援專案層。
 
 ## 規則
 
-- 記憶與對話紀錄**不進版控**。只有 hook、skill、command、設定檔入庫。
-- 新增技能:在 `.agents/skills/<name>/SKILL.md` 建立，再跑 `scripts/link-agents.sh` 補上各 agent 的 symlink。
-- 提交前確認 `git status` 沒有把 `.agents/memory/` 或任何 transcript 帶進來。
+- 記憶與對話紀錄不進版控。只有 skill、hook、command、設定檔入庫。
+- 新增技能:放進 `.agents/skills/<name>/SKILL.md` 即可，
+  `.claude/skills` 是整層 symlink，不必再補連結。
+- 改動結構後跑 `scripts/verify-agents.sh all` 確認三個 agent 都還讀得到。
+- 詳細的各 agent 差異與踩坑紀錄見 [README.md](README.md)。
 
 ## 驗證標記
 
