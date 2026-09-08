@@ -1,0 +1,32 @@
+# ── 不進版控：記憶與對話紀錄 ─────────────────────────────────
+# 記憶是機器本地狀態，三個 agent 共用同一份實體。
+.agents/memory/
+
+# 逐字對話紀錄與各工具的本地狀態
+.claude/projects/
+.claude/todos/
+.claude/shell-snapshots/
+.claude/statsig/
+.claude/ide/
+.claude/state/
+.claude/settings.local.json
+.codex/history/
+.codex/sessions/
+.codex/log/
+.gemini/tmp/
+.gemini/settings.local.json
+
+# ── 編輯器 / OS 雜訊 ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# ── 產生物 ───────────────────────────────────────────────────
+*.log
+node_modules/
+__pycache__/
+*.pyc

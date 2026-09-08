@@ -1,0 +1,27 @@
+{
+  "probe": {
+    "PreInvocation": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./.agents/hooks/test_probe.sh agy-PreInvocation",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./.agents/hooks/test_probe.sh agy-PreToolUse",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
