@@ -7,8 +7,8 @@
 # Claude Code stores per-project memory at:
 #   ~/.claude/projects/<encoded-workspace-path>/memory/
 # where <encoded-workspace-path> is the absolute workspace path with
-# every "/" replaced by "-" (e.g. /home/yunchien/workspace/docker ->
-# -home-yunchien-workspace-docker).
+# every "/" replaced by "-" (e.g. /home/user/workspace/docker ->
+# -home-user-workspace-docker).
 #
 # This script:
 #   1. Resolves the current workspace path (cwd by default, or --workspace
@@ -59,8 +59,8 @@ encode_workspace_path() {
   # Strip trailing slash if any
   path="${path%/}"
   # Replace all "/" AND "_" with "-".
-  # 實測:/home/yunchien/workspace/gitlab_runner 對應的目錄是
-  # -home-yunchien-workspace-gitlab-runner（底線也會被換掉）。
+  # 實測:/home/user/workspace/gitlab_runner 對應的目錄是
+  # -home-user-workspace-gitlab-runner（底線也會被換掉）。
   path="${path//\//-}"
   printf '%s' "${path//_/-}"
 }

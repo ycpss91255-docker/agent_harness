@@ -122,6 +122,18 @@ scripts/verify-agents.sh all       # 或 claude / codex / agy
 > `.claude/skills` 的情況下，用 `grep -rn "PROBE" .` 搜到檔案再讀出來，
 > 一樣吐得出驗證字串 —— 看起來通過，實際上共用機制根本沒生效。
 
+## 第三方技能
+
+`.agents/skills/` 底下的技能由 [`skills`](https://skills.sh) CLI 安裝，
+出處與清單見 [SKILLS.md](SKILLS.md)，版本鎖在 `skills-lock.json`。
+
+```bash
+npx skills@latest add <owner>/<repo> --skill <name>
+npx skills@latest experimental_install    # clone 後還原全部技能
+```
+
+> `--skill` **每個技能要一個旗標**，逗號分隔會被當成單一名稱而找不到。
+
 ## 參考
 
 - [Claude Code — Skills](https://code.claude.com/docs/en/skills)
