@@ -26,7 +26,7 @@ supports project-level slash commands.
   and config files are tracked.
 - To add a skill, drop it in `.agents/skills/<name>/SKILL.md`.
   `.claude/skills` is a whole-directory symlink, so no extra linking is needed.
-- After changing the structure, run `scripts/verify-agents.sh all` to confirm
+- After changing the structure, run `script/verify-agents.sh all` to confirm
   all three agents still pick it up.
 - See [README.md](README.md) for the per-agent differences and the findings
   behind this layout.

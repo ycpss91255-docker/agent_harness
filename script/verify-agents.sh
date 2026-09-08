@@ -13,7 +13,7 @@
 # file and echo the marker, which looks like a pass but proves nothing about
 # the shared mechanism.
 #
-# Usage: scripts/verify-agents.sh [claude|codex|agy|all]
+# Usage: script/verify-agents.sh [claude|codex|agy|all]
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 ROOT="$PWD"

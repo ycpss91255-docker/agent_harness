@@ -15,9 +15,9 @@
 # verify-agents.sh is deliberately not run here: it needs the three CLI agents
 # and API credentials, so it stays a local check.
 #
-# Usage: scripts/ci.sh [lint|json|frontmatter|structure|lock|all]
+# Usage: script/ci/ci.sh [lint|json|frontmatter|structure|lock|all]
 set -uo pipefail
-cd "$(dirname "$0")/.." || exit 1
+cd "$(dirname "$0")/../.." || exit 1
 
 fail=0
 ok()   { printf '  ok   %s\n' "$*"; }
@@ -34,7 +34,7 @@ check_lint() {
     # -S warning: the check_* functions are called indirectly as
     # "check_${c}", which shellcheck reports as unreachable (SC2317, info).
     if shellcheck -x -S warning "$f"; then ok "$f"; else bad "$f"; fi
-  done < <(find scripts .agents/hooks -name '*.sh' -type f | sort)
+  done < <(find script .agents/hooks -name '*.sh' -type f | sort)
 }
 
 check_actionlint() {

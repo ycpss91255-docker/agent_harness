@@ -22,7 +22,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # One step, not one per check. scripts/ci.sh owns the list of checks, so
-      # adding one there gates pull requests without touching this file.
+      # One step, not one per check. script/ci/ci.sh owns the list of checks,
+      # so adding one there gates pull requests without touching this file.
       - name: Run checks
-        run: scripts/ci.sh all
+        run: script/ci/ci.sh all
