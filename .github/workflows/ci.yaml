@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # One step, not one per check. scripts/ci.sh owns the list of checks, so
       # adding one there gates pull requests without touching this file.
