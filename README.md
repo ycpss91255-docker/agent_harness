@@ -107,6 +107,38 @@ scripts/setup-memory-link.sh --dry-run    # 先看會做什麼
 
 ## 驗證
 
+有兩條路徑，測的東西不同:
+
+| | `scripts/ci.sh` | `scripts/verify-agents.sh` |
+|---|---|---|
+| 跑在哪 | 本機 + 每個 PR（GitHub Actions） | **只有本機** |
+| 測什麼 | 這個結構賴以成立的不變條件 | 三個 agent 實際讀不讀得到 |
+| 需要什麼 | shellcheck、docker、python3 | 三個 CLI 與各自的 API 憑證 |
+
+`verify-agents.sh` 進不了 CI 就是因為最後那欄 —— 它要真的叫起三個 agent。
+
+### `scripts/ci.sh` —— PR 的守門員
+
+```bash
+scripts/ci.sh all          # 或 lint / actionlint / json / frontmatter / structure / lock
+```
+
+每一項都對應這個 repo 真的壞過的地方:
+
+| 檢查 | 擋掉什麼 |
+|---|---|
+| `structure` | symlink 斷掉或指錯 → Claude Code **靜默**看不到共用技能 |
+| `json` | `.agents/hooks.json` 結構錯 → 只在 agy 的 log 裡報，輸出完全正常 |
+| `frontmatter` | `SKILL.md` 缺 `name`/`description` → 三個 agent 都不註冊，無聲失敗 |
+| `lock` | 技能目錄沒進 `skills-lock.json` → clone 後還原不了 |
+| `lint` | shellcheck 兩個腳本目錄 |
+| `actionlint` | `runs-on` 打錯字**不會失敗，而是讓 job 永遠排隊** |
+
+檢查清單是 `ci.sh` 裡的 `CHECKS=(...)` 陣列，`all` 由它推導、workflow 只跑
+`ci.sh all` —— 加一項檢查只改一個地方，立刻對 PR 生效。
+
+### `scripts/verify-agents.sh` —— 三個 agent 真的讀得到嗎
+
 ```bash
 scripts/verify-agents.sh all       # 或 claude / codex / agy
 ```
