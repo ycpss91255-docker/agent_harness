@@ -1,0 +1,24 @@
+# Dependabot configuration.
+#
+# Scope here is narrow on purpose: this repo's only machine-readable pins are
+# the `uses:` refs in .github/workflows/. Skill content is vendored and pinned
+# by content hash in skills-lock.json, which dependabot cannot read; update
+# those with `npx skills@latest update`.
+#
+# ── Read this before closing a dependabot pull request ──────────────────────
+#
+# Closing one is not deferring the bump. Dependabot never re-proposes a version
+# pair whose pull request was closed, and nothing in this file records that the
+# opt-out happened -- so the resulting blind spot is invisible to anyone
+# reading the tree, and only findable by trawling closed pull requests.
+#
+# To postpone a bump, leave the pull request OPEN. To decline one, say so at
+# the pin itself rather than by closing a pull request that leaves no trace.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
