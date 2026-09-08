@@ -54,7 +54,10 @@ check_lint() {
   local f
   while IFS= read -r f; do
     if run_pinned "$SHELLCHECK_IMAGE" -x -S warning "$f"; then ok "$f"; else bad "$f"; fi
-  done < <(find script .agents/hooks -name '*.sh' -type f | sort)
+    # Ours only. dist/agents/skills/ is vendored third-party code: linting it
+    # would let an upstream commit turn this repo red, and the fix would be to
+    # diverge from the content hash in skills-lock.json.
+  done < <(find script dist/script .agents/hooks -name '*.sh' -type f | LC_ALL=C sort)
 }
 
 check_actionlint() {
@@ -121,16 +124,34 @@ check_structure() {
   fi
 }
 
+check_wiring() {
+  head_ "init.sh is idempotent"
+  # The root links are what the three agents actually read. If init.sh would
+  # still change something, the tree does not match what a consumer gets from
+  # a fresh install -- and nothing else would report that.
+  local out
+  out="$(./init.sh --dry-run 2>&1)" || { bad "init.sh --dry-run failed"; return; }
+  local pending
+  pending=$(printf '%s' "$out" | grep -cE '^  would ' || true)
+  if [ "$pending" = 0 ]; then
+    ok "no pending changes"
+  else
+    bad "$pending pending change(s):"
+    printf '%s\n' "$out" | grep -E '^  would ' | sed 's/^/       /'
+  fi
+}
+
 check_lock() {
   head_ "skills-lock.json covers .agents/skills"
   local locked installed missing extra
   locked=$(python3 -c "import json;print('\n'.join(sorted(json.load(open('skills-lock.json'))['skills'])))")
   # python's sorted() is codepoint order; the shell must use the same collation
   # or comm reports spurious differences (e.g. code-review vs codebase-design).
-  installed=$(find .agents/skills -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
+  installed=$(find dist/agents/skills -mindepth 1 -maxdepth 1 -type d -printf '%f\n' \
     | grep -v '^probe-marker$' | LC_ALL=C sort)
-  missing=$(comm -13 <(printf '%s\n' "$locked") <(printf '%s\n' "$installed"))
-  extra=$(comm -23 <(printf '%s\n' "$locked") <(printf '%s\n' "$installed"))
+  # comm compares with the current locale too, not just the input order.
+  missing=$(LC_ALL=C comm -13 <(printf '%s\n' "$locked") <(printf '%s\n' "$installed"))
+  extra=$(LC_ALL=C comm -23 <(printf '%s\n' "$locked") <(printf '%s\n' "$installed"))
   [ -n "$missing" ] && bad "installed but not in skills-lock.json: $(echo "$missing" | tr '\n' ' ')"
   [ -n "$extra" ]   && bad "in skills-lock.json but not installed: $(echo "$extra" | tr '\n' ' ')"
   [ -z "$missing" ] && [ -z "$extra" ] && ok "$(printf '%s\n' "$locked" | wc -l) skills match"
@@ -139,7 +160,7 @@ check_lock() {
 # The single list of checks. "all" derives from it, and CI runs only "all",
 # so adding a check here gates pull requests immediately -- there is no second
 # place to keep in sync.
-CHECKS=(lint actionlint json frontmatter structure lock)
+CHECKS=(lint actionlint json frontmatter structure wiring lock)
 
 target="${1:-all}"
 if [ "$target" = all ]; then
