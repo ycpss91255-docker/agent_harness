@@ -1,64 +1,86 @@
 # agent — 三個 CLI agent 的共用骨架
 
 同一份技能／指令／hook／記憶，讓 **Claude Code**、**OpenAI Codex**、
-**Gemini CLI** 三邊都吃得到，用來並行比較它們的行為差異。
+**agy (Antigravity / Gemini)** 三邊都吃得到。
+
+結構不是憑設定檔猜的，是**逐項實測 + 對照官方文件**得出的。
+驗證腳本:`scripts/verify-agents.sh`
 
 ## 結構
 
 ```
 agent/
-├── AGENTS.md                    專案指示（單一事實來源）
-├── CLAUDE.md  -> AGENTS.md
-├── GEMINI.md  -> AGENTS.md
+├── AGENTS.md                 專案指示（單一事實來源）
+├── CLAUDE.md -> AGENTS.md    Claude Code 不讀 AGENTS.md，必須有這條
 │
-├── .agents/                     唯一實體，所有內容都寫在這裡
-│   ├── skills/
+├── .agents/                  唯一實體。Codex 與 agy 原生就讀這裡
+│   ├── skills/<name>/SKILL.md
 │   ├── commands/
-│   ├── hooks/
-│   └── memory/                  完全不進版控（clone 後由腳本建立）
+│   ├── hooks/                hook 腳本
+│   ├── hooks.json            agy 的 hook 設定
+│   └── memory/               不進版控
 │
-├── .claude/  skills|commands|hooks|memory -> ../.agents/*
-│   └── settings.json
-├── .codex/   skills|commands|hooks|memory -> ../.agents/*
-├── .gemini/  skills|commands|hooks|memory -> ../.agents/*
-│   └── settings.json
+├── .claude/                  只有 Claude Code 需要這層
+│   ├── settings.json         Claude 的 hook 設定
+│   ├── skills   -> ../.agents/skills
+│   ├── commands -> ../.agents/commands
+│   ├── hooks    -> ../.agents/hooks
+│   └── memory   -> ../.agents/memory
 │
-├── scripts/setup-memory-link.sh
-└── .gitignore
+└── scripts/
+    ├── setup-memory-link.sh  接 Claude Code 的記憶目錄
+    └── verify-agents.sh      驗證三個 agent 讀不讀得到
 ```
 
-**整層 symlink**，不是逐項連結 —— 新增一個技能只要放進 `.agents/skills/`，
-三個 agent 立刻都看得到，不必再補連結或跑同步腳本。
+**沒有 `.codex/`、`.gemini/`** —— 實測拿掉後兩者功能完全不變。
+`.codex/skills` 是 Codex 的舊路徑，官方已改為 `.agents/skills`。
+
+## 三個 agent 的差異（實測結果）
+
+| | 技能來源 | Rules 檔 | Hook 設定 |
+|---|---|---|---|
+| Claude Code | `.claude/skills/`（**不讀 `.agents/`**，靠 symlink） | `CLAUDE.md` | `.claude/settings.json` |
+| Codex | `.agents/skills/`（原生） | `AGENTS.md` | **無 hook 機制** |
+| agy | `.agents/skills/`（原生） | `AGENTS.md` | `.agents/hooks.json` |
+
+### 踩過的坑
+
+- **agy headless 要 `--add-dir`**：只靠 cwd 不會觸發 workspace 客製化探索，
+  log 會顯示 `loaded 0 named hooks from 0 hooks.json file(s)`。
+- **agy 的 hook 路徑相對於 `.agents/`**：文件寫「working directory is set to
+  the directory containing hooks.json」，所以寫 `./hooks/x.sh` 而非 `./.agents/hooks/x.sh`。
+- **agy 的 `PreInvocation` 是 flat 結構**：不用 `matcher`/`hooks` 包裝，
+  只有 `PreToolUse`／`PostToolUse` 才是 grouped。
+- **Codex 需要 repo 是 git repo**：否則報 `Not inside a trusted directory`。
 
 ## 進版控的 / 不進版控的
 
 | 進 | 不進 |
 |---|---|
-| `.agents/` 底下的 skills、commands、hooks | `.agents/memory/` 整個目錄（含內容，零檔案入庫） |
-| 各 agent 的 `settings.json`、symlink 本身 | 逐字對話紀錄（`.claude/projects/` 等） |
-| `AGENTS.md` 與兩條 symlink | 各工具的本地狀態、`settings.local.json` |
+| `.agents/` 的 skills、commands、hooks、hooks.json | `.agents/memory/` 整個目錄 |
+| `.claude/settings.json`、各條 symlink | 逐字對話紀錄、各工具本地狀態 |
+| `AGENTS.md` 與 `CLAUDE.md` symlink | `hook-probe.log`（測試產物） |
 
-## 記憶怎麼接
+## 記憶
 
-`.agents/memory/` 是三個 agent 共用的實體，**整個目錄都不入庫**，
-所以 clone 下來不存在，由腳本建立。Claude Code 預期記憶放在
-`~/.claude/projects/<路徑 slug>/memory`，用腳本接過去:
+`.agents/memory/` 三個 agent 共用，**整個目錄不入庫**，clone 後由腳本建立:
 
 ```bash
-scripts/setup-memory-link.sh            # 目前目錄
-scripts/setup-memory-link.sh --dry-run  # 先看會做什麼
+scripts/setup-memory-link.sh            # 接上 ~/.claude/projects/<slug>/memory
+scripts/setup-memory-link.sh --dry-run
 ```
 
-腳本是冪等的:已經接好就跳過；目標不對會替換；本地有新內容會拒絕並要你先
-合併，`--force` 則會先備份再換。
+## 驗證
 
-## 各 agent 的接法：可信度不同
+```bash
+scripts/verify-agents.sh all      # 或 claude / codex / agy
+```
 
-| 工具 | 進入點 | 把握度 |
-|---|---|---|
-| Claude Code | `CLAUDE.md`、`.claude/settings.json`、`.claude/skills\|commands\|hooks` | 高 |
-| Gemini CLI | `GEMINI.md`、`.gemini/settings.json` | 中 |
-| OpenAI Codex | `AGENTS.md` | `AGENTS.md` 高；專案層 `.codex/` 的實際讀取路徑**未驗證** |
+三項獨立判定:
 
-`.codex/` 底下那幾條 symlink 是照對稱性擺的，Codex 是否真的會讀取尚待實測。
-確定讀不到的話直接刪掉那層即可，不影響其他兩個。
+- **註冊** —— 禁止任何工具呼叫的前提下，agent 列得出 `probe-marker`
+  → 證明是原生載入，不是它自己 grep 出來的
+- **使用** —— 吐得出只寫在 `SKILL.md` 內文的字串
+- **hook** —— `hook-probe.log` 出現新行
+
+> 只看「使用」會誤判:agent 可以用 `grep -rn` 搜到檔案再讀出來，看起來像通過。

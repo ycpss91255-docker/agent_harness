@@ -30,3 +30,6 @@ Thumbs.db
 node_modules/
 __pycache__/
 *.pyc
+
+# 測試探針輸出
+hook-probe.log
