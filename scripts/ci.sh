@@ -37,6 +37,25 @@ check_lint() {
   done < <(find scripts .agents/hooks -name '*.sh' -type f | sort)
 }
 
+check_actionlint() {
+  head_ actionlint
+  # A typo in a workflow is close to invisible: a bad `runs-on` label queues
+  # the job forever rather than failing it. actionlint is not packaged on most
+  # systems, so run the pinned image, matching how base does it.
+  local img="rhysd/actionlint:1.7.12"
+  if command -v actionlint >/dev/null; then
+    if actionlint -color; then ok "workflows"; else bad "workflows"; fi
+  elif command -v docker >/dev/null; then
+    if docker run --rm -v "$PWD":/repo -w /repo "$img" -color; then
+      ok "workflows (via $img)"
+    else
+      bad "workflows (via $img)"
+    fi
+  else
+    bad "neither actionlint nor docker is available"
+  fi
+}
+
 check_json() {
   head_ "json syntax"
   local f
@@ -112,7 +131,7 @@ check_lock() {
 # The single list of checks. "all" derives from it, and CI runs only "all",
 # so adding a check here gates pull requests immediately -- there is no second
 # place to keep in sync.
-CHECKS=(lint json frontmatter structure lock)
+CHECKS=(lint actionlint json frontmatter structure lock)
 
 target="${1:-all}"
 if [ "$target" = all ]; then
