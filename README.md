@@ -161,8 +161,8 @@ script/verify-agents.sh all       # 或 claude / codex / agy
 出處與清單見 [SKILLS.md](SKILLS.md)，版本鎖在 `skills-lock.json`。
 
 ```bash
-npx skills@latest add <owner>/<repo> --skill <name>
-npx skills@latest experimental_install    # clone 後還原全部技能
+npx skills@1.5.24 add <owner>/<repo> --skill <name>
+npx skills@1.5.24 experimental_install    # clone 後還原全部技能
 ```
 
 > `--skill` **每個技能要一個旗標**，逗號分隔會被當成單一名稱而找不到。

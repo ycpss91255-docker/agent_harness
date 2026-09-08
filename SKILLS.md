@@ -49,11 +49,16 @@ writing-for-agents
 
 ## Installing and updating
 
+The CLI version is pinned too: `@latest` would let a breaking change in the
+tool break the documented restore path, and nothing here would record which
+version produced `skills-lock.json`.
+
+
 ```bash
 # one --skill flag per skill; a comma-separated list is read as a single name
-npx skills@latest add <owner>/<repo> --skill <name> --skill <name>
+npx skills@1.5.24 add <owner>/<repo> --skill <name> --skill <name>
 
-npx skills@latest update                 # update against skills-lock.json
-npx skills@latest experimental_install   # restore every skill after a clone
-npx skills@latest list                   # show what is installed
+npx skills@1.5.24 update                 # update against skills-lock.json
+npx skills@1.5.24 experimental_install   # restore every skill after a clone
+npx skills@1.5.24 list                   # show what is installed
 ```

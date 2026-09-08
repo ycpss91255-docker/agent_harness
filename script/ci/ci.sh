@@ -19,6 +19,26 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 
+# Tools are pinned by DIGEST, not by tag: a tag can be re-pushed to different
+# content, so a tag pin says which label was requested, not which bytes ran.
+# Neither is visible to dependabot -- it reads `uses:` refs and manifest files,
+# not image references inside a shell script -- so these are updated by hand.
+# tool-pin: shellcheck dockerhub koalaman/shellcheck v0.10.0
+SHELLCHECK_IMAGE="koalaman/shellcheck@sha256:2097951f02e735b613f4a34de20c40f937a6c8f18ecb170612c88c34517221fb"
+# tool-pin: actionlint dockerhub rhysd/actionlint 1.7.12
+ACTIONLINT_IMAGE="rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667"
+
+# Run a pinned image over the repo. Refuses to fall back to a host binary: an
+# unpinned local tool is the drift this is here to prevent.
+run_pinned() {
+  local img="$1"; shift
+  if ! command -v docker >/dev/null; then
+    printf '  FAIL docker is required to run %s\n' "${img%%@*}"
+    return 1
+  fi
+  docker run --rm -v "$PWD":/repo -w /repo "$img" "$@"
+}
+
 fail=0
 ok()   { printf '  ok   %s\n' "$*"; }
 bad()  { printf '  FAIL %s\n' "$*"; fail=1; }
@@ -26,34 +46,22 @@ head_() { printf '\n### %s\n' "$*"; }
 
 check_lint() {
   head_ shellcheck
-  if ! command -v shellcheck >/dev/null; then
-    bad "shellcheck not installed"; return
-  fi
+  # Pinned by digest, not by the runner's package: Ubuntu 22.04 and 24.04 ship
+  # different shellcheck versions, and a version bump adds and removes checks.
+  # Without this, the same commit can go red purely because the OS moved.
+  # -S warning: the check_* functions are called indirectly as "check_${c}",
+  # which shellcheck reports as unreachable (SC2317, info).
   local f
   while IFS= read -r f; do
-    # -S warning: the check_* functions are called indirectly as
-    # "check_${c}", which shellcheck reports as unreachable (SC2317, info).
-    if shellcheck -x -S warning "$f"; then ok "$f"; else bad "$f"; fi
+    if run_pinned "$SHELLCHECK_IMAGE" -x -S warning "$f"; then ok "$f"; else bad "$f"; fi
   done < <(find script .agents/hooks -name '*.sh' -type f | sort)
 }
 
 check_actionlint() {
   head_ actionlint
   # A typo in a workflow is close to invisible: a bad `runs-on` label queues
-  # the job forever rather than failing it. actionlint is not packaged on most
-  # systems, so run the pinned image, matching how base does it.
-  local img="rhysd/actionlint:1.7.12"
-  if command -v actionlint >/dev/null; then
-    if actionlint -color; then ok "workflows"; else bad "workflows"; fi
-  elif command -v docker >/dev/null; then
-    if docker run --rm -v "$PWD":/repo -w /repo "$img" -color; then
-      ok "workflows (via $img)"
-    else
-      bad "workflows (via $img)"
-    fi
-  else
-    bad "neither actionlint nor docker is available"
-  fi
+  # the job forever rather than failing it.
+  if run_pinned "$ACTIONLINT_IMAGE" -color; then ok "workflows"; else bad "workflows"; fi
 }
 
 check_json() {
