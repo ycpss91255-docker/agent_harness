@@ -58,8 +58,11 @@ encode_workspace_path() {
   local path="$1"
   # Strip trailing slash if any
   path="${path%/}"
-  # Replace all "/" with "-"
-  printf '%s' "${path//\//-}"
+  # Replace all "/" AND "_" with "-".
+  # 實測:/home/yunchien/workspace/gitlab_runner 對應的目錄是
+  # -home-yunchien-workspace-gitlab-runner（底線也會被換掉）。
+  path="${path//\//-}"
+  printf '%s' "${path//_/-}"
 }
 
 main() {
