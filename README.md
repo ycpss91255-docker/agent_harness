@@ -37,11 +37,20 @@ agent/
 
 ## 三個 agent 的差異（實測結果）
 
-| | 技能來源 | Rules 檔 | Hook 設定 |
+| 資產 | Claude Code | Codex | agy |
 |---|---|---|---|
-| Claude Code | `.claude/skills/`（**不讀 `.agents/`**，靠 symlink） | `CLAUDE.md` | `.claude/settings.json` |
-| Codex | `.agents/skills/`（原生） | `AGENTS.md` | **無 hook 機制** |
-| agy | `.agents/skills/`（原生） | `AGENTS.md` | `.agents/hooks.json` |
+| **skills** | 讀 `.claude/skills/`，**不讀 `.agents/`** → 靠 symlink | 原生讀 `.agents/skills/` | 原生讀 `.agents/skills/`（headless 需 `--add-dir`） |
+| **rules** | 只讀 `CLAUDE.md` → symlink 到 `AGENTS.md` | 讀 `AGENTS.md` | 讀 `AGENTS.md` |
+| **hooks** | `.claude/settings.json` | **無 hook 機制** | `.agents/hooks.json` |
+| **commands** | `.claude/commands/` | **不支援專案層** | **不支援專案層** |
+| **memory** | `scripts/setup-memory-link.sh` 接上 | 未驗證 | 未驗證 |
+
+> **`.agents/commands/` 實際上只有 Claude Code 吃得到。** 實測 Codex 與 agy 在
+> 「禁止工具呼叫」的前提下都回答「沒有 ping 這個斜線指令」——它們沒有註冊，
+> 先前看似成功是因為 agent 自己去翻檔案。
+>
+> **記憶目前也只有 Claude Code 接上。** `.agents/memory/` 對另外兩個而言只是
+> 一般目錄，「三個 agent 共用記憶」尚未成立。
 
 ### 踩過的坑
 
