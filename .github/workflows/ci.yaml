@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # The job name is the required status check context in branch protection.
+  # Keep it stable and generic: renaming it silently breaks the protection
+  # rule, either un-gating pull requests or hanging them on a context that
+  # never reports.
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # One step, not one per check. scripts/ci.sh owns the list of checks, so
+      # adding one there gates pull requests without touching this file.
+      - name: Run checks
+        run: scripts/ci.sh all

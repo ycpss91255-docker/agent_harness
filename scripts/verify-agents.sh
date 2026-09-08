@@ -15,7 +15,7 @@
 #
 # Usage: scripts/verify-agents.sh [claude|codex|agy|all]
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 ROOT="$PWD"
 LOG="$ROOT/hook-probe.log"
 MARKER='PROBE-MARKER-OK-7Q4X'
