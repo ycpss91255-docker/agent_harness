@@ -36,7 +36,7 @@ agent/
 
 | 資產 | Claude Code | Codex | agy |
 |---|---|---|---|
-| **skills** | 讀 `.claude/skills/`，**不讀 `.agents/`** → 靠 symlink | 原生讀 `.agents/skills/` | 原生讀 `.agents/skills/` |
+| **skills** | 讀 `.claude/skills/`，**不讀 `.agents/`** → 靠 symlink | 原生讀 `.agents/skills/` | 原生讀 `.agents/skills/`（headless 需 `--add-dir`） |
 | **rules** | 只讀 `CLAUDE.md` → symlink 到 `AGENTS.md` | 讀 `AGENTS.md` | 讀 `AGENTS.md` |
 | **hooks** | `.claude/settings.json` | **沒有 hook 機制** | `.agents/hooks.json` |
 | **commands** | `.claude/commands/` | 不支援專案層 | 不支援 |
@@ -66,18 +66,18 @@ Claude 專屬的(commands、memory、settings.json)一律放 `.claude/`。
 
 ### agy (Antigravity)
 
-- **headless 模式一定要 `--add-dir`**:
+- **headless 模式一定要 `--add-dir`，互動模式不用**:
 
   ```bash
-  agy --add-dir "$PWD" -p "..."
+  agy                        # 互動:自動掃描到 .agents/，不必加旗標
+  agy --add-dir "$PWD" -p "..."   # headless:一定要加
   ```
 
-  不帶的話 skills 只剩內建兩個，log 顯示
+  headless 不帶旗標的話 skills 只剩內建兩個，log 顯示
   `loaded 0 named hooks from 0 hooks.json file(s)`。
   值得注意的是 log 裡 `workspaceDirs` **本來就有 cwd** —— 它知道你在哪，
-  但不會主動掃描，必須明確加入。這與它自己文件寫的「從 cwd 往上遍歷」不符，
-  該行為在 1.1.26 這個 build 上沒有實現。
-  （**互動模式尚未驗證**，進去打「列出你可用的 skill」看有沒有 `probe-marker` 即可。）
+  但 print 模式不會主動掃描，必須明確加入。
+  文件寫的「從 cwd 往上遍歷」只在互動模式成立。
 - hook 的**工作目錄是 `hooks.json` 所在的 `.agents/`**，
   所以命令寫 `./hooks/x.sh`，不是 `./.agents/hooks/x.sh`。
 - `PreInvocation` / `PostInvocation` / `Stop` 是 **flat 結構**（直接放 handler 物件）；
