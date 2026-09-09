@@ -22,9 +22,9 @@
 #                           hooks/ because nothing fires these: a hook is
 #                           invoked by the agent, a script is invoked by the
 #                           author. Under .agents/ rather than .claude/ because
-#                           all three agents call them -- Codex has no hook
-#                           mechanism, so a script is the only rule-carrier it
-#                           can reach.
+#                           all three agents call them, and because a script is
+#                           the one rule-carrier that no agent's hook-trust
+#                           gate can switch off.
 #   .claude/commands/<name> per command, same reason as skills
 #   .claude/skills          -> ../.agents/skills   (Claude Code does not read
 #   .claude/hooks           -> ../.agents/hooks     .agents/ itself)
@@ -34,12 +34,44 @@
 #   AGENTS.md               project instructions
 #   .agents/hooks.json      which hooks agy fires -- policy, not content
 #   .claude/settings.json   the same for Claude Code
+#   .codex/hooks.json       the same for Codex. It is NOT under .agents/,
+#                           because .codex/ is the directory Codex reads
+#                           project hooks from and .agents/ is measurably not
+#                           read (measured 2026-09-09, codex-cli 0.153.2: the
+#                           same file placed at .agents/hooks.json is not
+#                           listed by the app-server's hooks/list). hooks.json
+#                           is one of two files it reads THERE -- [[hooks.*]]
+#                           blocks in .codex/config.toml are project hooks too,
+#                           listed by hooks/list with source "project". This
+#                           harness ships hooks.json; a consumer keeping theirs
+#                           in config.toml is not doing it wrong, and copy_once
+#                           will not notice, which is why the gate report below
+#                           is a report and not a verdict.
+#
+# CODEX HOOKS ARE DOUBLY TRUST-GATED, AND BOTH GATES FAIL SILENTLY IN
+# `codex exec`. A delivered .codex/hooks.json does nothing until (1) the repo is
+# a trusted project in ~/.codex/config.toml -- named by its exact root path,
+# because trust does not descend from a parent entry -- and (2) the hook itself
+# has been reviewed: a fresh clone's hooks list as trustStatus "untrusted", the
+# review happens in the TUI, and the recorded hash changes whenever the hook
+# config changes. Measured: with the project untrusted, or with the hook
+# unreviewed, `codex exec` printed no hook line and no warning at all; the hook
+# simply did not run. (Outside `codex exec` the trust gate is loud -- the
+# app-server and the TUI print an ERROR naming the untrusted .codex folder.)
+#
+# So an install being green is not a promise that Codex will fire the hook on
+# that machine -- only that the file a trusted, reviewed Codex would read is in
+# place. That gap is exactly the one report_unwired exists to close for
+# .claude/settings.json, so it is not left silent either: report_codex_gates
+# prints both gates whenever .codex/hooks.json is present after the copy step.
+# It cannot clear them -- ~/.codex/config.toml is the consumer's file and the
+# review is an interactive flow -- so it says what is left to do and stops.
 #
 # COPY-ONCE MEETS A REPO THAT ALREADY HAS THE FILE. Adopting the harness into an
 # existing project is the normal case, and an existing project usually already
 # has .claude/settings.json. copy_once then keeps the consumer's file, which is
 # right -- it is theirs -- but every hook this harness ships is wired from one of
-# those two files, so the hooks are delivered and never fire. Nothing said so:
+# those policy files, so the hooks are delivered and never fire. Nothing said so:
 # the install printed "keep .claude/settings.json (yours)" and finished green.
 #
 # init.sh does not edit a file the consumer owns, so it does not wire the hook
@@ -192,6 +224,36 @@ report_unwired() {           # report_unwired <policy-file> <how-line>...
   return 0
 }
 
+# Delivering .codex/hooks.json is not the same as Codex running it, and the
+# difference is invisible from here: both gates live outside this repo (a
+# trust entry in the consumer's ~/.codex/config.toml, and an interactive hook
+# review), and under `codex exec` failing either produces no hook line and no
+# warning. An install that printed "copy .codex/hooks.json" and stopped would
+# read as "the Codex hook is live", which is the same silence report_unwired
+# was added to end for .claude/settings.json. So it is said out loud, every
+# time the file is there, whether it was just copied or kept.
+report_codex_gates() {
+  # In a dry run the file has not been written yet, so ask the payload instead:
+  # a dry run that stayed quiet about the gates would be the more misleading of
+  # the two, since it is what a cautious consumer reads first.
+  [[ -e .codex/hooks.json ]] \
+    || { ((DRY)) && [[ -e "${HARNESS}/dist/codex/hooks.json" ]]; } \
+    || return 0
+  {
+    printf '  GATED    .codex/hooks.json is delivered; Codex will not run it yet\n'
+    printf '           1. trust the project -- add to ~/.codex/config.toml:\n'
+    printf '                [projects."%s"]\n' "${ROOT}"
+    printf '                trust_level = "trusted"\n'
+    printf '              the entry must name that exact path; trust does not\n'
+    printf '              descend from an entry for a parent directory.\n'
+    printf '           2. review the hook -- start `codex` in this repo and accept\n'
+    printf '              it. The recorded hash changes whenever the file changes.\n'
+    printf '           under `codex exec` both gates fail in SILENCE: no hook line,\n'
+    printf '           no warning, nothing runs. Neither is init.sh'"'"'s to clear.\n'
+  } >&2
+  return 0
+}
+
 echo "skills"
 fan_out .agents/skills 2 dist/agents/skills
 echo "hooks"
@@ -219,12 +281,23 @@ echo "yours to edit"
 copy_once AGENTS.md             dist/template/AGENTS.md
 copy_once .agents/hooks.json    dist/agents/hooks.json
 copy_once .claude/settings.json dist/claude/settings.json
+copy_once .codex/hooks.json     dist/codex/hooks.json
 report_unwired .claude/settings.json \
   'add it under hooks.PreToolUse with matcher "Bash":' \
   '  {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.agents/hooks/<hook>"}'
 report_unwired .agents/hooks.json \
   'add it under <group>.PreToolUse with matcher "*":' \
   '  {"type": "command", "command": "./hooks/<hook>"}'
+# Codex runs a hook command through a shell, from the SESSION's directory rather
+# than the repo root (measured: a session started in sub/deeper ran the hook with
+# that as its cwd), and sets no project-directory variable of its own. So the
+# path has to locate the root itself, and `git rev-parse` is the one way that
+# works from any depth -- Codex requires a git repo anyway.
+report_unwired .codex/hooks.json \
+  'add it under hooks.PreToolUse with matcher "*":' \
+  '  {"type": "command",' \
+  '   "command": "\"$(git rev-parse --show-toplevel)/.agents/hooks/<hook>\""}'
+report_codex_gates
 [[ -L CLAUDE.md && "$(readlink CLAUDE.md)" == "AGENTS.md" ]] \
   && say "ok       CLAUDE.md" \
   || { act "link     CLAUDE.md -> AGENTS.md"

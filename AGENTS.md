@@ -20,13 +20,17 @@ A shared skill layer for three CLI agents:
 |---|---|---|
 | Project instructions | `AGENTS.md` (`CLAUDE.md` is a symlink to it) | all three |
 | Skills | `.agents/skills/<name>/SKILL.md` | all three |
-| Hook scripts | `.agents/hooks/*.sh` | Claude Code, agy |
-| Hook config | `.agents/hooks.json` (agy), `.claude/settings.json` (Claude Code) | each its own |
+| Hook scripts | `.agents/hooks/*.sh` | all three |
+| Hook config | `.agents/hooks.json` (agy), `.claude/settings.json` (Claude Code), `.codex/hooks.json` (Codex) | each its own |
 | Slash commands | `.claude/commands/<name>.md` | **Claude Code only** |
 | Memory | `.claude/memory/` | **Claude Code only** |
 
 Rule: **`.agents/` holds only what all three agents can read.**
-Anything Claude-specific goes under `.claude/`.
+Anything Claude-specific goes under `.claude/`, and Codex's hook policy goes
+under `.codex/`, because `.codex/` is the directory it reads project hooks
+from — `hooks.json`, which is what this repo uses, or `[[hooks.*]]` blocks in
+`config.toml`. It does not read hooks from `.agents/`. The hook *scripts* stay
+shared in `.agents/hooks/`; only the policy file is per-agent.
 
 Make shared functionality a **skill**, not a command — only Claude Code
 supports project-level slash commands.
@@ -60,6 +64,17 @@ See `doc/agents/triage-labels.md`.
 Single-context: `CONTEXT.md` and `doc/adr/` at the repo root.
 See `doc/agents/domain.md`.
 
+## Records
+
+### The `docker_harness` script survey
+
+`ycpss91255-docker/docker_harness` is retired.
+[`doc/docker-harness-script-survey.md`](doc/docker-harness-script-survey.md)
+records what its 51 scripts were, which are worth carrying here and what binds
+each survivor to the dead repo, and seven pieces of operational knowledge that
+live in no script at all. Read it before proposing something that repo already
+had; a script absent from this repo may be absent by decision.
+
 ## Repo location and worktrees
 
 `~/workspace/ycpss91255-docker/agent/agent_harness_ws/agent_harness`, per the
@@ -81,17 +96,19 @@ one tree; the slug says what that tree is for, normally the descriptive part
 of the branch: branch `fix/1073-review` gives `worktree/1073/review`.
 
 An issue often needs more than one worktree, and the number alone cannot say
-which tree is which. The sibling repo `ycpss91255-docker/docker_harness`
-names worktrees `<repo>-<issue-number>` across 179 trees and shows what
-happens: `base-1073rev` and `base-1073tui` are both issue 1073, `base-994-p2`
-and `base-994p3` are both issue 994, with the distinguishing part improvised
-as an ad-hoc suffix and punctuated inconsistently. Two levels separate the
-two jobs: the number groups, the slug distinguishes. The second level stays
-mandatory even for a single tree, because making it optional means moving the
-first tree the moment a second one appears. Grouping also makes cleanup
-per-issue rather than per-tree: when an issue closes, its whole directory
-goes. The repo prefix that scheme needs is redundant here: its `worktree/`
-holds trees for two repos, while a `_ws` directory holds one.
+which tree is which. A flat scheme that identifies a tree by its issue number
+has nowhere to put that distinction, so it gets improvised at the moment a
+second tree appears: the name grows an ad-hoc suffix, invented by whoever
+opened the tree and punctuated however they felt at the time. Across a few
+hundred trees the same issue then appears under several unrelated-looking
+names, and nothing tells you which is which without opening them. Two levels
+separate the two jobs: the number groups, the slug distinguishes. The second
+level stays mandatory even for a single tree, because making it optional means
+moving the first tree the moment a second one appears. Grouping also makes
+cleanup per-issue rather than per-tree: when an issue closes, its whole
+directory goes. A repo prefix inside the name is redundant here: a prefix is
+only needed when one worktree directory pools the trees of several repos,
+while a `_ws` directory holds one.
 
 ## Verification marker
 

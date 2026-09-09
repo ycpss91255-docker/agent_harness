@@ -1,12 +1,12 @@
 {
   "probe": {
     "PreInvocation": [
-      { "type": "command", "command": "./hooks/test_probe.sh agy-PreInvocation", "timeout": 10 }
+      { "type": "command", "command": "AGENT_NAME=agy ./hooks/test_probe.sh agy-PreInvocation", "timeout": 10 }
     ],
     "PreToolUse": [
       { "matcher": "*",
         "hooks": [
-          { "type": "command", "command": "./hooks/test_probe.sh agy-PreToolUse", "timeout": 10 }
+          { "type": "command", "command": "AGENT_NAME=agy ./hooks/test_probe.sh agy-PreToolUse", "timeout": 10 }
         ] }
     ]
   },

@@ -37,14 +37,20 @@
 # that quotes an example title cannot be mistaken for a title. The entire defect
 # class disappears.
 #
-# The pattern comes from the sibling repo ycpss91255-docker/docker_harness,
-# whose enforce_semver_tag_via_script.sh denies ad-hoc `git tag` commands and
-# "Forces the caller through .claude/scripts/release-tag.sh" -- an error-prone
-# operation routed through a script that encodes the rules.
+# The pattern is general: when an operation is error-prone enough to need
+# rules, the hook does not try to validate the ad-hoc command. It denies the
+# ad-hoc form outright and forces the caller through a script that encodes the
+# rules -- the hook only has to say "not that way, this way", and the script
+# receives real arguments it can actually check.
 #
-# ALL THREE AGENTS CAN CALL THIS. Hooks only ever reached Claude Code and agy;
-# Codex has no hook mechanism of any kind. A script has no such gap, which is
-# why the rules live here and only a redirect lives in the hook.
+# ALL THREE AGENTS CAN CALL THIS, UNCONDITIONALLY. That was once a claim about
+# Codex having no hooks at all; it no longer is. Codex 0.153.2 does have project
+# hooks, read from <repo>/.codex/ (demonstrated 2026-09-09), and the redirect
+# hook is wired for it. The reason the rules still live here is narrower and
+# sturdier: every hook path is conditional on something the repo does not
+# control -- Claude Code's and agy's on a policy file the consumer owns and
+# init.sh will not edit, Codex's on two trust gates that a fresh clone fails
+# silently. A script is the one carrier with no such gate on it.
 #
 # WHAT IS CHECKED (authority: doc/agents/issue-tracker.md, "Issue titles", and
 # doc/agents/triage-labels.md)
