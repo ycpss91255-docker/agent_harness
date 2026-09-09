@@ -15,3 +15,14 @@ What the harness already provides, and what you should not restate:
 Add your own skills next to the vendored ones in .agents/skills/<name>/ and
 your own commands in .claude/commands/. Both directories mix the two.
 -->
+
+## Working agreements
+
+- **Sessions plan; agents execute.** A conversation session is for planning
+  and discussion. Dispatch the work to a sub agent or a workflow rather than
+  editing files in the session itself.
+- **A workflow that reports its own success is unverified.** Every workflow
+  ends with a separate verification agent that re-derives the result rather
+  than trusting the executor's report.
+- **Bookkeeping is the exception.** Trivial session bookkeeping (memory
+  files, scratchpad notes) stays in the session.
