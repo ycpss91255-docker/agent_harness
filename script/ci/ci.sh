@@ -21,7 +21,11 @@
 #              either way, so a hook that silently stopped firing looks exactly
 #              like a hook that approves of everything
 #   hook_wiring a hook that no config file names never runs, and running the
-#              script by path -- which redirect_hook does -- passes either way
+#              script by path -- which redirect_hook does -- passes either way.
+#              Three configs now, one per agent: Codex acquired project hooks
+#              (.codex/hooks.json), and its path rule differs from the other
+#              two, so a command that is correct for Claude Code or agy is
+#              wired and inert there
 #   ship       a hook that ships and a script that does not is an install
 #              telling its author to run a file it never delivered -- and the
 #              same is true of a message citing a document dist/ does not ship,
@@ -99,8 +103,9 @@ check_json() {
   # The dist/ copies are what init.sh hands a consumer on a fresh install. A
   # syntax error in one of those is not visible in this repo at all -- it breaks
   # somebody else's clone.
-  for f in .agents/hooks.json .claude/settings.json skills-lock.json \
-           dist/agents/hooks.json dist/claude/settings.json; do
+  for f in .agents/hooks.json .claude/settings.json .codex/hooks.json \
+           skills-lock.json \
+           dist/agents/hooks.json dist/claude/settings.json dist/codex/hooks.json; do
     [ -e "$f" ] || { bad "$f missing"; continue; }
     if python3 -c "import json,sys;json.load(open(sys.argv[1]))" "$f"; then
       ok "$f"
@@ -1250,6 +1255,20 @@ check_redirect_hook() {
     deny  'gh issue new --title "hooks: and the new alias"'
     # An assignment in front of a command is ordinary and must not hide it.
     deny  'GH_HOST=github.com gh issue create --title "hooks: with an assignment"'
+    # A FLAG IN FRONT OF THE SUBCOMMAND MUST NOT HIDE IT EITHER. cobra strips
+    # flags before it resolves the subcommand, so every one of these is a
+    # working create -- and `-R`, the form automation uses to write to another
+    # repo, is the call least likely to be read by a human.
+    deny  'gh -R owner/repo issue create --title "hooks: a flag before the subcommand"'
+    deny  'gh --repo owner/repo issue create --title "hooks: the long form too"'
+    # The value may be ATTACHED, in which case the next word is NOT its value.
+    deny  'gh -Rowner/repo issue create --title "hooks: pflag attaches it"'
+    deny  'gh --repo=owner/repo issue create --title "hooks: and after an equals"'
+    deny  'gh -R owner/repo issue edit 12 --title "hooks: the edit arm behind a flag"'
+    # `--` ends cobra's search for a subcommand: `gh -- issue create` answers
+    # `unknown command "issue"` and creates nothing, so denying it would refuse
+    # a command that does not exist.
+    allow 'gh -- issue create --title "hooks: no subcommand at all"'
     # The whole reason this replaced a title-parsing hook: the body of a heredoc
     # is text, not a command, and the old hook read an example title out of one
     # and denied the repo's own documented recipe.
@@ -1276,6 +1295,11 @@ check_redirect_hook() {
     allow 'gh issue create -h'
     # `edit` takes a target first, and the lookup is still a lookup behind it.
     allow 'gh issue edit 12 --help'
+    # The exemption has to survive the flag-skipping, or the fix above would
+    # have turned a harmless lookup into a deny.
+    allow 'gh -R owner/repo issue create --help'
+    allow 'gh --repo=owner/repo issue create --help'
+    allow 'gh -R owner/repo issue edit 12 --help'
     allow 'gh issue edit https://github.com/o/r/issues/12 --help'
     # A help flag in front of the rest still wins: cobra never runs the body.
     allow 'gh issue create --help --title "hooks: never filed"'
@@ -1334,9 +1358,18 @@ check_hook_wiring() {
   #
   # Read as JSON rather than grepped, so an entry that has been moved somewhere
   # inert (the wrong matcher, the wrong event) fails here as well as a missing
-  # one. Codex has no hook mechanism, so there is deliberately nothing to check
-  # for it, and since the rules moved into script/gh-issue.sh that gap now costs
-  # Codex a nudge rather than the rules themselves.
+  # one.
+  #
+  # CODEX IS CHECKED TOO, AND USED NOT TO BE. This repo asserted for months that
+  # Codex had no hook mechanism at all. That was measured, and it expired:
+  # codex-cli 0.153.2 reads project hooks from <repo>/.codex/hooks.json, and a
+  # hook wired there fires (demonstrated 2026-09-09 -- SessionStart and
+  # PreToolUse both ran, with a Claude-Code-shaped JSON payload on stdin).
+  # Its path rule is its own, which is why this arm is not a copy of either of
+  # the others: Codex runs the command through a shell from the SESSION's
+  # working directory, not the repo root, and sets no project-directory variable
+  # -- so a bare relative path is wired and still never resolves once the agent
+  # is one directory down. The command has to find the root itself.
   # Named, not globbed from dist/agents/hooks: a hook is listed here when it is
   # meant to fire for every agent, and the list is the statement of that. A new
   # hook that nothing wires is added here in the same change that ships it.
@@ -1395,6 +1428,35 @@ WIRED
         ok "$f runs $name (PreToolUse, matcher *, ./hooks/ path)"
       else
         bad "$f does not run $name under PreToolUse with matcher * and a ./hooks/ path"
+      fi
+    done
+    for f in .codex/hooks.json dist/codex/hooks.json; do
+      if python3 - "$f" "$name" <<'WIRED'
+import json, sys
+path, name = sys.argv[1], sys.argv[2]
+try:
+    conf = json.load(open(path))
+except Exception:
+    raise SystemExit(1)
+for entry in (conf.get("hooks") or {}).get("PreToolUse") or []:
+    # "*" is the matcher a Codex PreToolUse hook was demonstrated to fire on.
+    if entry.get("matcher") != "*":
+        continue
+    for hook in entry.get("hooks") or []:
+        command = hook.get("command") or ""
+        # The command runs in a shell, from the session's directory rather than
+        # the repo root, with no project-directory variable set. So it has to
+        # resolve the root itself; a path that starts with ./ or .agents/ is
+        # wired and inert the moment the agent is one directory down.
+        if (hook.get("type") == "command" and name in command
+                and "git rev-parse --show-toplevel" in command):
+            raise SystemExit(0)
+raise SystemExit(1)
+WIRED
+      then
+        ok "$f runs $name (PreToolUse, matcher *, self-locating path)"
+      else
+        bad "$f does not run $name under PreToolUse with matcher * and a \$(git rev-parse --show-toplevel) path"
       fi
     done
   done
@@ -1458,6 +1520,41 @@ check_ship() {
     return
   fi
   ok "init.sh installs into a fresh consumer repo"
+
+  # THE CODEX POLICY FILE, DELIVERED AND THEN ACTUALLY RUN.
+  # Two failures are possible here and neither shows up anywhere else. The file
+  # can simply not be delivered -- init.sh's own UNWIRED report says nothing
+  # about a policy file that is absent, so dropping the copy_once line would be
+  # silent. And the command inside it can be wired correctly and still not
+  # resolve: Codex runs it through a shell from the SESSION's directory, not the
+  # repo root, so a path that works at the root is inert one directory down.
+  # That is why this takes the command string out of the delivered file and runs
+  # it the way a shell would, from a subdirectory, and demands the deny.
+  local codex_conf="$consumer/.codex/hooks.json" ccmd cverdict
+  if [ ! -e "$codex_conf" ]; then
+    bad "a fresh install does not carry .codex/hooks.json, so Codex runs no hook"
+  elif ! ccmd="$(python3 - "$codex_conf" <<'CODEXCMD'
+import json, sys
+conf = json.load(open(sys.argv[1]))
+for entry in (conf.get("hooks") or {}).get("PreToolUse") or []:
+    for hook in entry.get("hooks") or []:
+        if hook.get("type") == "command" and (hook.get("command") or ""):
+            print(hook["command"])
+            raise SystemExit(0)
+raise SystemExit(1)
+CODEXCMD
+  )"; then
+    bad ".codex/hooks.json is delivered but names no PreToolUse command"
+  else
+    mkdir -p "$consumer/one/two"
+    cverdict="$( cd "$consumer/one/two" && env -u CLAUDE_PROJECT_DIR sh -c "$ccmd" \
+      <<<"$(hook_payload 'gh issue create --title "hooks: x"')" | hook_verdict )"
+    if [ "$cverdict" = deny ]; then
+      ok "the delivered .codex/hooks.json command resolves and denies from a subdirectory"
+    else
+      bad "the delivered .codex/hooks.json command gave '$cverdict' from a subdirectory: $ccmd"
+    fi
+  fi
 
   # The deny message, from the DELIVERED copy, read IN THE CONSUMER TREE. Both
   # halves matter. Running this repo's copy from this repo's working directory
@@ -1589,7 +1686,24 @@ print("\n".join(sorted(seen)))')
   # is noise everybody learns to skip. The first consumer is that repo.
   case "$out" in
     *UNWIRED*) bad "init.sh reported UNWIRED for a fresh install it wired itself" ;;
-    *)         ok "a fresh install, which init.sh wires itself, reports nothing" ;;
+    *)         ok "a fresh install, which init.sh wires itself, reports no UNWIRED hook" ;;
+  esac
+
+  # QUIET ABOUT THE WIRING IS NOT QUIET ABOUT THE GATES, and this check exists
+  # because the two were confused. Codex's hook file is delivered wired and the
+  # UNWIRED report is therefore correctly silent -- but on the consumer's
+  # machine the hook still does not run until the project is trusted in
+  # ~/.codex/config.toml and the hook has been reviewed, and under `codex exec`
+  # failing either produces no hook line and no warning. An install that said
+  # "copy .codex/hooks.json" and then "done" is read as "the Codex hook is
+  # live", which is the same failure report_unwired was added to end for
+  # .claude/settings.json. init.sh cannot clear either gate -- both live outside
+  # the repo -- so what is asserted here is that it says so.
+  case "$out" in
+    *GATED*".codex/hooks.json"*trust_level*review*)
+      ok "init.sh names both Codex trust gates when it delivers .codex/hooks.json" ;;
+    *)
+      bad "init.sh delivered .codex/hooks.json without naming the two trust gates" ;;
   esac
 
   ship_cleanup
