@@ -31,6 +31,24 @@ supports project-level slash commands.
 - See [README.md](README.md) for the per-agent differences and the findings
   behind this layout.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in this repo's GitHub Issues (`ycpss91255-docker/agent_harness`),
+driven by the `gh` CLI. See `doc/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles, each label string equal to its name, plus
+a sixth role local to this repo, `needs-decision`.
+See `doc/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `doc/adr/` at the repo root.
+See `doc/agents/domain.md`.
+
 ## Verification marker
 
 When asked about the RULES MARKER, reply: RULES-MARKER-OK-9Z2K
