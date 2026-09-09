@@ -4,7 +4,7 @@ Issues and specs for this repo live as GitHub issues. Creating and editing one g
 
 ## Conventions
 
-- **Create an issue**: `.agents/scripts/gh-issue.sh create --title "scope: ..." --body-file <path> --label <category> [--label <state>]`. Write the body to a file first; the script always hands it to `gh` as `--body-file`, and `--body "..."` is accepted only as a convenience that writes the text out for you. The body carries five sections, in this order: `## Context`, `## Problem`, `## Proposal`, `## Acceptance criteria`, `## Out of scope`.
+- **Create an issue**: `.agents/scripts/gh-issue.sh create --title "scope: ..." --body-file <path> --label <category> [--label <state>]`. Write the body to a file first; the script always hands it to `gh` as `--body-file`, and `--body "..."` is accepted only as a convenience that writes the text out for you. The body carries five sections, in this order: `## Context`, `## Problem`, `## Proposal`, `## Acceptance criteria`, `## Out of scope`. A small issue — a one-line bug, a trivial doc tweak — may collapse `## Proposal` into `## Problem` and drop `## Acceptance criteria`; `## Context` and `## Out of scope` always stay, because they are the two sections that get retroactively wished-for most often. Whichever sections are present keep the order above.
 - **Edit an issue**: `.agents/scripts/gh-issue.sh edit <number> --title "..."` / `--body-file <path>`. The target may be the issue number or its URL, the two forms `gh` itself accepts.
 - **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
 - **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
@@ -15,6 +15,42 @@ Issues and specs for this repo live as GitHub issues. Creating and editing one g
 Add `--dry-run` (or set `GH_ISSUE_DRY_RUN=1`) to either script recipe to see the exact `gh` command it would run, checked but not filed. Unknown flags are forwarded to `gh` untouched, so `--repo`, `--assignee` and the rest still work — they keep their order relative to each other, but the script rebuilds the command as title, body file, labels, then everything else. `--` is not an end-of-options marker here: it is forwarded like any other unrecognised word and the arguments after it are still read by the script, which is harmless only because these `gh` subcommands take no positional argument other than the issue number.
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
+
+## Issue titles
+
+Four rules. They govern issue titles only; this is a repo-local convention.
+
+- **Bare scope prefix, no type.** `scope: description`. The scope is one or two words naming the part of the repo the issue touches: `skill`, `skills`, `hooks`, `prd`, `labels`, `repo`, `docs`. The Conventional-Commits `type(scope)` form is deliberately not used for issue titles: `feat`/`docs`/`fix` restate the `enhancement`/`documentation` category label the issue already carries, while the scope is information no label captures. `type(scope): subject` remains the convention for **commit messages and PR titles** — this rule narrows to issues.
+- **State the problem, not the proposed fix.** From Mozilla's Bug Writing Guidelines: a title "should explain the problem, not your suggested solution". Their rejected example is `Browser should work with my web site` — wish-shaped, so it names no problem.
+- **Maximum 80 characters.** The empirical basis, recorded so a future reader can judge whether to revisit it: across kubernetes/kubernetes, rust-lang/rust, python/cpython, vuejs/core, angular/angular, microsoft/vscode, denoland/deno and facebook/react, the median issue-title length is 67-90 characters (60 newest open issues per repo, measured 2026-09-08). Mozilla's own 60-character line is met by only 16-41% of titles in those repos. 80 sits inside the observed band.
+- **Undecidedness goes in the label, never the title.** An issue whose deliverable is a decision carries `needs-decision` (see [triage-labels.md](triage-labels.md)); the title states the open problem and does not say "decide". Precedent: `rust-lang/rust` tracking-issue titles are identical in shape whether or not the design is settled — `I-needs-decision` and `S-tracking-design-concerns` carry that, not the title.
+
+`.agents/scripts/gh-issue.sh` is where these rules are applied, and it is the entry point for **all three agents**. The file itself is `dist/agents/scripts/gh-issue.sh`; `init.sh` links it to `.agents/scripts/gh-issue.sh` in every repo that installs the harness, which is why that is the path named here and in the hook — it is the only one that is true in a consumer's repo as well as in this one. This repo additionally keeps `script/gh-issue.sh` as a symlink to the same file, so its own older invocation path still works. The shell parses its arguments before it runs, so it reads the real title out of its own argv: there is nothing to tokenise and nothing to guess, and a body quoting an example title cannot be mistaken for a title. It refuses a violation, names the rule and says how to fix it, and never silently corrects a title. The refusal states the rule in its own words and only adds "see this document" where this document is actually present: `dist/` ships the script and does not ship `doc/`, so in a consumer's repo a citation would name a file they were never given. Rules 1 and 3 refuse; rule 4 is a heuristic and only warns; rule 2 is not machine-checkable and is not attempted.
+
+The predecessor was a PreToolUse hook that hand-parsed the whole Bash command string looking for a `--title`. That approach does not converge: two rounds of adversarial review found 22 then 17 defects, and the last of them was a **false deny of the recipe in this document**, because a heredoc body quoting an example title was read as the real title.
+
+What remains as a hook is a nudge. `.agents/hooks/redirect_gh_issue.sh` notices a direct `gh issue create` (or its `new` alias) or `gh issue edit` and points at the script; it never reads or judges a title. A help lookup is exempt — `gh issue create --help`, `gh issue edit 12 --help` — because it prints the flag list and exits without running the command body; the exemption requires the help flag to be the first word after the subcommand, or the first after a single bare target, since `--title --help` files an issue called `--help`. Nothing else is exempt: `--web` opens a prefilled form in a browser, which is a create with a longer path rather than a read. Its matching is anchored at the start of the command string, so the same words inside a heredoc, a quoted example, or a later segment of a `&&` chain are not matched — a missed direct call costs one redirect message, while a false deny blocks real work and catches no mistake. `gh pr` is untouched.
+
+Hooks reach Claude Code and agy only; **Codex has no hook mechanism at all**, which is the second reason the rules live in the script rather than in the hook. Neither piece is a boundary: `bash -c`, `eval`, a variable holding `gh`, or a title assembled by command substitution all file whatever they please. The rules above are the convention; the script applies them, and the hook only catches the easy misses.
+
+Sibling repos have not adopted this convention; issues filed in them follow whatever they use.
+
+Issue #6 tracks vendoring the `gh-artifact-format` skill, whose section 1 specifies a different title rule (`type(scope): action`, <= 70 characters). When that skill lands, its section 1 is superseded by this document rather than duplicated — one home per topic.
+
+**Known conflict, not yet filed.** A vendored skill contradicts the hook this repo ships: `dist/agents/skills/setup-matt-pocock-skills/issue-tracker-github.md`, line 7, tells an agent to run `gh issue create --title "..." --body "..."` — the exact command shape `redirect_gh_issue.sh` denies, and an inline body besides. Lines 11, 40 and 44 of the same file name `gh issue edit` and a further `gh issue create`. It is third-party content vendored under `dist/agents/skills/`, so it is not edited here: a fix would diverge from the content hash in `skills-lock.json` and be lost at the next upgrade. That file is a *template* the `setup-matt-pocock-skills` skill copies into a repo as its issue-tracker description, so the resolution is for that copy to be this document rather than the upstream default. Needs an issue against the vendoring arrangement, not a patch to the skill.
+
+## Citing sources
+
+How an issue body, a comment, or a document in this repo cites a source. Two forms, picked by whether the source can still move under the citation.
+
+- **A pinned source is cited by file, line and commit hash.** Another repo, or any specific commit: `enforce_gh_body_file.sh:53,62 @ 1a68b19`. The hash is what makes the line numbers reliable, and it is the only citation that survives the source repo being deleted.
+- **A living file is cited by section and quoted words, not line numbers.** Anything in this repo that will still be edited: `triage-labels.md`, "Divergence" section: "identical name, colour and description".
+
+Evidence for the split, recorded so a future reader can judge it: during the session that produced this rule a citation of `doc/agents/triage-labels.md:27-28` went stale within that same session, because a later edit shifted the lines; citations pinned at commit `1a68b19` stayed exact.
+
+`ycpss91255-research/vendor_kit` uses the section-plus-quotation form for everything (its `doc/README.md`, "Cross-references" section). This rule extends theirs rather than rejecting it: over a corpus of living documents the two behave identically.
+
+It matters now because `ycpss91255-docker/docker_harness` is scheduled for retirement, so every citation into it must carry a commit hash or it becomes unfollowable.
 
 ## Pull requests as a triage surface
 
