@@ -46,18 +46,24 @@
 # had written moments earlier, and with a nonce to grep for there is nothing to
 # gain by it.
 #
-# CODEX IS INVERTED, NOT SKIPPED -- AND THE REASON HAS CHANGED. The inversion
-# was put here because Codex was held to have no hook mechanism at all, so "a
-# hook fired" could never be true for it. That premise expired: codex-cli
-# 0.153.2 reads project hooks from <repo>/.codex/hooks.json, and one wired there
-# demonstrably fires (2026-09-09). The inversion stays, on a narrower and still
-# true statement: THIS REPO does not wire test_probe.sh for Codex. .codex/hooks
-# .json names redirect_gh_issue.sh and nothing else, so no line carrying this
-# run's nonce may appear while Codex is the agent under test.
+# CODEX IS INVERTED, NOT SKIPPED -- AND THE INVERSION IS NEW HERE. It arrives
+# with the Codex hook wiring, in the same change; it was not carried over from
+# before it. Until then Codex ran the identical `[ -s "$LOG" ]` assertion as the
+# other two agents, which is exactly how an agent with no probe hook wired
+# scored a PASS on another session's lines.
 #
-# It still costs nothing and still catches something: a probe hook wired for
-# Codex behind our backs, or the nonce leaking out of the Codex process into
-# another agent's hook. What it no longer means is "Codex cannot run hooks".
+# Why it exists now is narrow: THIS REPO wires no probe hook for Codex --
+# .codex/hooks.json does not name test_probe.sh -- so no line the probe writes
+# can be attributable to Codex, and "no line carries this run's nonce" is a
+# property that can actually fail. That is a much smaller claim than "Codex has
+# no hook mechanism at all", which was this repo's standing assertion until the
+# same change disproved it by measurement: codex-cli 0.153.2 reads project hooks
+# from <repo>/.codex/hooks.json, and one wired there demonstrably fires
+# (2026-09-09).
+#
+# It costs nothing and catches something: a probe hook wired for Codex behind
+# our backs, or the nonce leaking out of the Codex process into another agent's
+# hook. What it does not mean is "Codex cannot run hooks".
 #
 # WIRING THE PROBE FOR CODEX IS A REAL OPTION AND IS DELIBERATELY NOT TAKEN
 # HERE. It would need the AGENT_NAME prefix (Codex does run the command through

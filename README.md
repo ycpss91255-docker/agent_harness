@@ -249,14 +249,20 @@ script/verify-agents.sh all       # 或 claude / codex / agy
 也因為有 nonce 可以 grep，**log 不再事先清空**。以前那句 `: > "$LOG"` 只是把別的
 session 幾秒前寫的行洗掉，換不到任何東西。
 
-> **Codex 這一項是反過來判，不是跳過** —— 而且理由已經換過一次。當初會反過來判，
-> 是因為認定 Codex 根本沒有 hook 機制，「hook 有跑」對它永遠不可能成立；那個前提
-> 已經過期（見上面 Codex 一節，codex-cli 0.153.2 讀得到 project hooks）。反過來判
-> 留著，但換成一句更窄、目前仍然為真的話:**這個 repo 沒有替 Codex 接
-> `test_probe.sh`**，`.codex/hooks.json` 只列了 `redirect_gh_issue.sh`。所以測 Codex
-> 時的斷言是「**沒有**任何一行帶著這次執行的 nonce」，輸出上也標成 inverted，
-> 免得有人把它讀成「Codex 跑了 hook」。它幾乎不花成本，也還擋得住兩件事:有人背著
-> 我們替 Codex 接上 probe hook，或 nonce 從 Codex process 漏進別的 agent 的 hook。
+> **The Codex row here is judged inverted, not skipped — and the inversion is
+> new.** It was added together with the Codex hook wiring, in the same change;
+> it was not carried over from before it. Until then Codex ran the identical
+> `[ -s "$LOG" ]` assertion as the other two agents, which is exactly how an
+> agent with no probe hook wired came out PASS on another session's lines.
+> Why it exists now is narrow: **this repo wires no probe hook for Codex** —
+> `.codex/hooks.json` does not name `test_probe.sh` — so no line the probe
+> writes can be attributable to Codex, and the assertion "**no** line carries
+> this run's nonce" is one that can actually fail. That is a much smaller claim
+> than "Codex has no hook mechanism at all", which the same change disproved by
+> measurement (see the Codex section above). The output labels it `inverted` so
+> that nobody reads it as "Codex ran a hook". It costs almost nothing and still
+> catches two things: a probe hook wired for Codex behind our backs, or the
+> nonce leaking out of the Codex process into another agent's hook.
 
 判定結果會回到 exit code 上:任何一項 FAIL → `exit 1`，全過 → `exit 0`，target
 打錯 → `exit 2`。舊版一律 `exit 0`，那不是決定，是 dispatch 最後一個 `command -v`
