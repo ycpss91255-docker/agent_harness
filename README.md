@@ -16,6 +16,7 @@ agent/
 ├── .agents/                  真正共用的資產
 │   ├── skills/<name>/SKILL.md    三個 agent 都讀得到
 │   ├── hooks/*.sh               hook 腳本，Claude 與 agy 共用
+│   ├── scripts/gh-issue.sh      init.sh 由 dist/agents/scripts/ 接過來
 │   └── hooks.json               agy 的 hook 設定
 │
 ├── .claude/                  Claude Code 專用
@@ -27,6 +28,7 @@ agent/
 │
 └── script/
     ├── ci/ci.sh              CI 檢查（每個 PR 都跑）
+    ├── gh-issue.sh -> ../dist/agents/scripts/gh-issue.sh
     ├── setup-memory-link.sh
     └── verify-agents.sh
 ```

@@ -1,23 +1,21 @@
 {
   "probe": {
     "PreInvocation": [
-      {
-        "type": "command",
-        "command": "./hooks/test_probe.sh agy-PreInvocation",
-        "timeout": 10
-      }
+      { "type": "command", "command": "./hooks/test_probe.sh agy-PreInvocation", "timeout": 10 }
     ],
     "PreToolUse": [
-      {
-        "matcher": "*",
+      { "matcher": "*",
         "hooks": [
-          {
-            "type": "command",
-            "command": "./hooks/test_probe.sh agy-PreToolUse",
-            "timeout": 10
-          }
-        ]
-      }
+          { "type": "command", "command": "./hooks/test_probe.sh agy-PreToolUse", "timeout": 10 }
+        ] }
+    ]
+  },
+  "gh-issue-redirect": {
+    "PreToolUse": [
+      { "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "./hooks/redirect_gh_issue.sh", "timeout": 10 }
+        ] }
     ]
   }
 }

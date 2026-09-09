@@ -1,0 +1,1 @@
+../../dist/agents/hooks/redirect_gh_issue.sh
