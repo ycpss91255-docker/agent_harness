@@ -9,20 +9,42 @@ permissions:
   contents: read
 
 jobs:
-  # The job name is the required status check context in branch protection.
-  # Keep it stable and generic: renaming it silently breaks the protection
-  # rule, either un-gating pull requests or hanging them on a context that
-  # never reports.
-  ci:
-    name: ci
-    runs-on: ubuntu-latest
+  # ubuntu-latest is deliberately not used. It currently resolves to 24.04 and
+  # will move to 26.04 (already in preview), silently changing bash, coreutils
+  # and every preinstalled tool under CI without a commit to blame.
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        # v7 -- tags are mutable, so pin the commit and let dependabot move it.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      # One step, not one per check. scripts/ci.sh owns the list of checks, so
-      # adding one there gates pull requests without touching this file.
+      # One step, not one per check. script/ci/ci.sh owns the list of checks,
+      # so adding one there gates pull requests without touching this file.
       - name: Run checks
-        run: scripts/ci.sh all
+        run: script/ci/ci.sh all
+
+  # Aggregator. The required status check in branch protection is this job, so
+  # the context stays `ci` no matter how the matrix changes -- adding an OS
+  # would otherwise leave protection pointing at a context that no longer
+  # reports, which does not fail a pull request, it hangs one.
+  ci:
+    name: ci
+    runs-on: ubuntu-24.04
+    needs: [check]
+    if: always()
+    steps:
+      - name: Verify every matrix job passed
+        run: |
+          if [ "${{ needs.check.result }}" != "success" ]; then
+            echo "matrix result: ${{ needs.check.result }}"
+            exit 1
+          fi
+          echo "all matrix jobs passed"

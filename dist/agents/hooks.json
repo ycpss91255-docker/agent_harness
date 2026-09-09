@@ -1,0 +1,10 @@
+{
+  "gh-issue-redirect": {
+    "PreToolUse": [
+      { "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "./hooks/redirect_gh_issue.sh", "timeout": 10 }
+        ] }
+    ]
+  }
+}

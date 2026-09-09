@@ -1,0 +1,1 @@
+../dist/agents/scripts/gh-issue.sh

@@ -4,7 +4,7 @@
 **agy (Antigravity / Gemini)** 三邊都吃得到。
 
 結構不是照設定檔猜的，是**逐項實測 + 對照官方文件**得出的。
-每一條結論下面都附了驗證方式，隨時可重跑:`scripts/verify-agents.sh`
+每一條結論下面都附了驗證方式，隨時可重跑:`script/verify-agents.sh`
 
 ## 結構
 
@@ -16,6 +16,7 @@ agent/
 ├── .agents/                  真正共用的資產
 │   ├── skills/<name>/SKILL.md    三個 agent 都讀得到
 │   ├── hooks/*.sh               hook 腳本，Claude 與 agy 共用
+│   ├── scripts/gh-issue.sh      init.sh 由 dist/agents/scripts/ 接過來
 │   └── hooks.json               agy 的 hook 設定
 │
 ├── .claude/                  Claude Code 專用
@@ -25,7 +26,9 @@ agent/
 │   ├── skills -> ../.agents/skills
 │   └── hooks  -> ../.agents/hooks
 │
-└── scripts/
+└── script/
+    ├── ci/ci.sh              CI 檢查（每個 PR 都跑）
+    ├── gh-issue.sh -> ../dist/agents/scripts/gh-issue.sh
     ├── setup-memory-link.sh
     └── verify-agents.sh
 ```
@@ -98,8 +101,8 @@ Claude 專屬的(commands、memory、settings.json)一律放 `.claude/`。
 `~/.claude/projects/<路徑 slug>/memory`:
 
 ```bash
-scripts/setup-memory-link.sh
-scripts/setup-memory-link.sh --dry-run    # 先看會做什麼
+script/setup-memory-link.sh
+script/setup-memory-link.sh --dry-run    # 先看會做什麼
 ```
 
 冪等:已接好就跳過；目標不對會替換；本地有新內容會拒絕並要你先合併，
@@ -109,7 +112,7 @@ scripts/setup-memory-link.sh --dry-run    # 先看會做什麼
 
 有兩條路徑，測的東西不同:
 
-| | `scripts/ci.sh` | `scripts/verify-agents.sh` |
+| | `script/ci/ci.sh` | `script/verify-agents.sh` |
 |---|---|---|
 | 跑在哪 | 本機 + 每個 PR（GitHub Actions） | **只有本機** |
 | 測什麼 | 這個結構賴以成立的不變條件 | 三個 agent 實際讀不讀得到 |
@@ -117,10 +120,10 @@ scripts/setup-memory-link.sh --dry-run    # 先看會做什麼
 
 `verify-agents.sh` 進不了 CI 就是因為最後那欄 —— 它要真的叫起三個 agent。
 
-### `scripts/ci.sh` —— PR 的守門員
+### `script/ci/ci.sh` —— PR 的守門員
 
 ```bash
-scripts/ci.sh all          # 或 lint / actionlint / json / frontmatter / structure / lock
+script/ci/ci.sh all          # 或 lint / actionlint / json / frontmatter / structure / lock
 ```
 
 每一項都對應這個 repo 真的壞過的地方:
@@ -137,10 +140,10 @@ scripts/ci.sh all          # 或 lint / actionlint / json / frontmatter / struct
 檢查清單是 `ci.sh` 裡的 `CHECKS=(...)` 陣列，`all` 由它推導、workflow 只跑
 `ci.sh all` —— 加一項檢查只改一個地方，立刻對 PR 生效。
 
-### `scripts/verify-agents.sh` —— 三個 agent 真的讀得到嗎
+### `script/verify-agents.sh` —— 三個 agent 真的讀得到嗎
 
 ```bash
-scripts/verify-agents.sh all       # 或 claude / codex / agy
+script/verify-agents.sh all       # 或 claude / codex / agy
 ```
 
 三項獨立判定:
@@ -160,8 +163,8 @@ scripts/verify-agents.sh all       # 或 claude / codex / agy
 出處與清單見 [SKILLS.md](SKILLS.md)，版本鎖在 `skills-lock.json`。
 
 ```bash
-npx skills@latest add <owner>/<repo> --skill <name>
-npx skills@latest experimental_install    # clone 後還原全部技能
+npx skills@1.5.24 add <owner>/<repo> --skill <name>
+npx skills@1.5.24 experimental_install    # clone 後還原全部技能
 ```
 
 > `--skill` **每個技能要一個旗標**，逗號分隔會被當成單一名稱而找不到。
