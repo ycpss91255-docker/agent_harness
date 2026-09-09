@@ -18,6 +18,13 @@
 #   .agents/skills/<name>   per skill, so the consumer's own skills sit
 #                           alongside the vendored ones in the same directory
 #   .agents/hooks/<name>    per hook script, same reason
+#   .agents/scripts/<name>  per script an agent is told to RUN. Separate from
+#                           hooks/ because nothing fires these: a hook is
+#                           invoked by the agent, a script is invoked by the
+#                           author. Under .agents/ rather than .claude/ because
+#                           all three agents call them -- Codex has no hook
+#                           mechanism, so a script is the only rule-carrier it
+#                           can reach.
 #   .claude/commands/<name> per command, same reason as skills
 #   .claude/skills          -> ../.agents/skills   (Claude Code does not read
 #   .claude/hooks           -> ../.agents/hooks     .agents/ itself)
@@ -27,6 +34,20 @@
 #   AGENTS.md               project instructions
 #   .agents/hooks.json      which hooks agy fires -- policy, not content
 #   .claude/settings.json   the same for Claude Code
+#
+# COPY-ONCE MEETS A REPO THAT ALREADY HAS THE FILE. Adopting the harness into an
+# existing project is the normal case, and an existing project usually already
+# has .claude/settings.json. copy_once then keeps the consumer's file, which is
+# right -- it is theirs -- but every hook this harness ships is wired from one of
+# those two files, so the hooks are delivered and never fire. Nothing said so:
+# the install printed "keep .claude/settings.json (yours)" and finished green.
+#
+# init.sh does not edit a file the consumer owns, so it does not wire the hook
+# for them. What it does now is refuse to be silent: a kept policy file that
+# does not name a shipped hook is reported as UNWIRED, with the entry to add.
+# Merging harness-owned entries into a consumer's config properly -- a managed
+# region, an opt-out for a hook they deliberately removed, and upgrade semantics
+# for both -- is a change to what copy_once means and is not attempted here.
 #
 # Options:
 #   --dry-run   print what would change, change nothing
@@ -146,10 +167,41 @@ fan_out() {                  # fan_out <dir-from-root> <depth> <dir-in-harness>
   done
 }
 
+# Every hook this harness ships has to be named by a policy file or it never
+# runs, and the policy files are copy_once. A grep is the right weight for this:
+# it is a warning, not a verdict, it needs no JSON parser in a script that
+# otherwise has no dependencies, and the failure it catches is the file not
+# mentioning the hook AT ALL. A file that names the hook under the wrong event
+# is script/ci/ci.sh check_hook_wiring's business, where there is a parser.
+report_unwired() {           # report_unwired <policy-file> <how-line>...
+  local at="$1"; shift
+  local name missing=0 path
+  [[ -e "${at}" ]] || return 0
+  for path in "${HARNESS}"/dist/agents/hooks/*.sh; do
+    [[ -f "${path}" ]] || continue
+    name="$(basename -- "${path}")"
+    grep -q -F -e "${name}" -- "${at}" && continue
+    printf '  UNWIRED  %s does not name %s, so that hook never fires\n' "${at}" "${name}" >&2
+    missing=1
+  done
+  if ((missing)); then
+    local line
+    for line in "$@"; do printf '           %s\n' "${line}" >&2; done
+    printf '           this file is yours, so init.sh will not edit it.\n' >&2
+  fi
+  return 0
+}
+
 echo "skills"
 fan_out .agents/skills 2 dist/agents/skills
 echo "hooks"
 fan_out .agents/hooks 2 dist/agents/hooks
+echo "scripts"
+# The redirect hook is shipped and wired in both config files, so a consumer's
+# fresh install carries a hook naming .agents/scripts/gh-issue.sh. Shipping the
+# hook without the script it names hands that install an instruction it cannot
+# follow, which is exactly what happened while the script lived in script/.
+fan_out .agents/scripts 2 dist/agents/scripts
 echo "commands"
 fan_out .claude/commands 2 dist/claude/commands
 echo "claude entry points"
@@ -167,6 +219,12 @@ echo "yours to edit"
 copy_once AGENTS.md             dist/template/AGENTS.md
 copy_once .agents/hooks.json    dist/agents/hooks.json
 copy_once .claude/settings.json dist/claude/settings.json
+report_unwired .claude/settings.json \
+  'add it under hooks.PreToolUse with matcher "Bash":' \
+  '  {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.agents/hooks/<hook>"}'
+report_unwired .agents/hooks.json \
+  'add it under <group>.PreToolUse with matcher "*":' \
+  '  {"type": "command", "command": "./hooks/<hook>"}'
 [[ -L CLAUDE.md && "$(readlink CLAUDE.md)" == "AGENTS.md" ]] \
   && say "ok       CLAUDE.md" \
   || { act "link     CLAUDE.md -> AGENTS.md"
