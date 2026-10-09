@@ -68,12 +68,10 @@ See `doc/agents/domain.md`.
 
 ### The `docker_harness` script survey
 
-`ycpss91255-docker/docker_harness` is retired.
-[`doc/docker-harness-script-survey.md`](doc/docker-harness-script-survey.md)
-records what its 51 scripts were, which are worth carrying here and what binds
-each survivor to the dead repo, and seven pieces of operational knowledge that
-live in no script at all. Read it before proposing something that repo already
-had; a script absent from this repo may be absent by decision.
+`ycpss91255-docker/docker_harness` is retired. Issue #23 records what its 51
+scripts were, which are worth carrying here and what binds each survivor to
+the dead repo. Read it before proposing something that repo already had; a
+script absent from this repo may be absent by decision.
 
 ## Repo location and worktrees
 
