@@ -1370,9 +1370,14 @@ check_hook_wiring() {
   #
   # CODEX IS CHECKED TOO, AND USED NOT TO BE. This repo asserted for months that
   # Codex had no hook mechanism at all. That was measured, and it expired:
-  # codex-cli 0.153.2 reads project hooks from <repo>/.codex/hooks.json, and a
-  # hook wired there fires (demonstrated 2026-09-09 -- SessionStart and
-  # PreToolUse both ran, with a Claude-Code-shaped JSON payload on stdin).
+  # codex-cli 0.153.2 reads project hooks from the <repo>/.codex/ directory --
+  # from hooks.json and from [[hooks.*]] blocks in config.toml, both returned by
+  # hooks/list with source "project" -- and a hook wired there fires
+  # (demonstrated 2026-09-09 -- SessionStart and PreToolUse both ran, with a
+  # Claude-Code-shaped JSON payload on stdin). The files checked below are the
+  # hooks.json pair because that is what this harness ships, not because it is
+  # the only path Codex reads; a consumer keeping theirs in config.toml is not
+  # doing it wrong.
   # Its path rule is its own, which is why this arm is not a copy of either of
   # the others: Codex runs the command through a shell from the SESSION's
   # working directory, not the repo root, and sets no project-directory variable
@@ -2108,6 +2113,24 @@ check_ship() {
   # Exactly what a `git subtree add` of this repo would place there.
   cp -a .version dist init.sh upgrade.sh "$harness/" \
     || { bad "cannot copy the harness payload"; return; }
+
+  # THE GATE REPORT IN A DRY RUN, TAKEN BEFORE THE INSTALL ON PURPOSE. The
+  # arm at the end of this check asserts the gates for the real run, and a dry
+  # run over an already-installed tree would re-assert exactly that branch:
+  # report_codex_gates tests `-e .codex/hooks.json` first, which is true in
+  # both cases. The branch no other check reaches is the one that exists only
+  # for a dry run -- the file is not there yet, so the payload's
+  # dist/codex/hooks.json is consulted instead. A cautious consumer reads that
+  # output before installing anything, so it is the shape worth pinning.
+  local dryout
+  dryout="$("$harness/init.sh" --dry-run 2>&1)" \
+    || { bad "init.sh --dry-run failed in a fresh consumer repo"; return; }
+  case "$dryout" in
+    *GATED*".codex/hooks.json"*trust_level*review*)
+      ok "init.sh --dry-run names both Codex trust gates before the file exists" ;;
+    *)
+      bad "init.sh --dry-run promised .codex/hooks.json without naming the two trust gates" ;;
+  esac
 
   local out
   if ! out="$("$harness/init.sh" 2>&1)"; then
