@@ -58,8 +58,10 @@
 # property that can actually fail. That is a much smaller claim than "Codex has
 # no hook mechanism at all", which was this repo's standing assertion until the
 # same change disproved it by measurement: codex-cli 0.153.2 reads project hooks
-# from <repo>/.codex/hooks.json, and one wired there demonstrably fires
-# (2026-09-09).
+# from the <repo>/.codex/ DIRECTORY -- from hooks.json and from [[hooks.*]]
+# blocks in config.toml, both returned by hooks/list with source "project" --
+# and one wired there demonstrably fires (2026-09-09). hooks.json is the file
+# this repo happens to use, not the one path Codex reads.
 #
 # It costs nothing and catches something: a probe hook wired for Codex behind
 # our backs, or the nonce leaking out of the Codex process into another agent's
