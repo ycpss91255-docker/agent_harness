@@ -26,10 +26,10 @@ agent/
 │   ├── skills -> ../.agents/skills
 │   └── hooks  -> ../.agents/hooks
 │
-├── .codex/                  Codex only
-│   └── hooks.json              Codex's hook config (one of two files Codex
-│                                reads project hooks from; the other is
-│                                .codex/config.toml, unused here)
+├── .codex/                  Codex 專用
+│   └── hooks.json              Codex 的 hook 設定（Codex 讀 project hooks 的
+│                                兩個檔案之一，另一個是 .codex/config.toml，
+│                                這裡沒用到）
 │
 └── script/
     ├── ci/ci.sh              CI 檢查（每個 PR 都跑）
@@ -40,24 +40,20 @@ agent/
 
 **沒有 `.gemini/`** —— 實測拿掉後功能完全不變。
 
-**`.codex/` — the decision was right when it was taken, and its premise has
-since expired.** This repo carried no `.codex/` directory, on the measured
-ground that removing it changed nothing. That measurement was correct and still
-is for what it covered: skills, prompts and rules load from `.agents/` and
-`AGENTS.md` with no `.codex/` present. What changed underneath it is that
-`.codex/` became the directory Codex reads **project hooks** from. Re-measured
-on 2026-09-09 with codex-cli 0.153.2: a hook wired in `<repo>/.codex/hooks.json`
-fires. So the directory is back, carrying exactly one file, and the record is
-"re-measure, the ground moved" rather than "this was a mistake".
+**`.codex/` —— 當初那個決定在當下是對的，過期的是它的前提。**
+這個 repo 一直沒有 `.codex/` 目錄，理由是實測過拿掉之後什麼都沒變。
+那次實測沒錯，就它涵蓋的範圍來說到現在也還成立:沒有 `.codex/`，skills、prompts、
+rules 照樣從 `.agents/` 與 `AGENTS.md` 載入。變的是底下那一層 —— `.codex/`
+成了 Codex 讀 **project hooks** 的目錄。2026-09-09 以 codex-cli 0.153.2 重測:
+接在 `<repo>/.codex/hooks.json` 裡的 hook 會觸發。所以目錄回來了，裡面就一個
+檔案，而這件事該記成「重測，地基動了」，不是「當初做錯了」。
 
-The directory is the boundary; the filename is not. `hooks/list` reports
-`source: "project"` for hooks declared in **either** `<repo>/.codex/hooks.json`
-**or** `[[hooks.*]]` blocks in `<repo>/.codex/config.toml`, each entry naming
-its own file as `sourcePath` (measured 2026-09-09, both layers, same repo).
-What is measured as *not* read is `.agents/`: the identical file placed at
-`<repo>/.agents/hooks.json` produces no entry at all. This repo uses
-`hooks.json` because it is the smaller file and needs no TOML; that is a
-preference, not the only path that would work.
+畫界線的是目錄，不是檔名。`hooks/list` 對宣告在 `<repo>/.codex/hooks.json`
+**或** `<repo>/.codex/config.toml` 的 `[[hooks.*]]` 區塊裡的 hook，兩邊都回報
+`source: "project"`，每一筆各自把自己的檔案寫在 `sourcePath`（2026-09-09
+實測，兩層都測，同一個 repo）。實測*讀不到*的是 `.agents/`:同一份檔案放到
+`<repo>/.agents/hooks.json`，一筆都不會出現。這個 repo 用 `hooks.json` 是因為它
+比較小、也不必寫 TOML；那是偏好，不是唯一行得通的路。
 
 ## 誰吃得到什麼（全部實測）
 
@@ -65,7 +61,7 @@ preference, not the only path that would work.
 |---|---|---|---|
 | **skills** | 讀 `.claude/skills/`，**不讀 `.agents/`** → 靠 symlink | 原生讀 `.agents/skills/` | 原生讀 `.agents/skills/`（headless 需 `--add-dir`） |
 | **rules** | 只讀 `CLAUDE.md` → symlink 到 `AGENTS.md` | 讀 `AGENTS.md` | 讀 `AGENTS.md` |
-| **hooks** | `.claude/settings.json` | `.codex/hooks.json` or `.codex/config.toml` — never `.agents/`, and behind two trust gates | `.agents/hooks.json` |
+| **hooks** | `.claude/settings.json` | `.codex/hooks.json` 或 `.codex/config.toml` —— **不會是 `.agents/`**，而且後面還卡著兩道信任關卡 | `.agents/hooks.json` |
 | **commands** | `.claude/commands/` | 不支援專案層 | 不支援 |
 | **memory** | `.claude/memory/` | 無對應機制 | 無對應機制 |
 
@@ -90,54 +86,48 @@ Claude 專屬的(commands、memory、settings.json)一律放 `.claude/`。
 - **沒有專案層斜線指令**。自訂 prompt 只吃 `~/.codex/prompts/`，
   而且官方標為 deprecated:「if you want to share a prompt or want Codex to
   implicitly invoke it, **use skills instead**」。
-- **Project hooks exist, and `.codex/` is where they are read from**
-  (codex-cli 0.153.2, measured 2026-09-09) — `<repo>/.codex/hooks.json`, which
-  is what this repo ships, and equally `[[hooks.*]]` blocks in
-  `<repo>/.codex/config.toml`; `hooks/list` returns both with
-  `source: "project"`. The same file placed under `.agents/` is not picked up.
-  Config shape and payloads are Claude Code's: `PreToolUse` with `matcher` +
-  `hooks`, `tool_name` `"Bash"`, `tool_input.command`, and a
-  `hookSpecificOutput.permissionDecision` reply. Five things differ and each one
-  can wire a hook that never runs:
+- **有 project hooks，而且是從 `.codex/` 讀的**（codex-cli 0.153.2，
+  2026-09-09 實測）—— `<repo>/.codex/hooks.json`，也就是這個 repo 現在放的
+  那一份；同樣算數的還有 `<repo>/.codex/config.toml` 裡的 `[[hooks.*]]`
+  區塊。`hooks/list` 兩邊都回 `source: "project"`。同一份檔案放到 `.agents/`
+  底下就不會被撿起來。設定格式與 payload 跟 Claude Code 一樣:`PreToolUse`
+  用 `matcher` + `hooks`、`tool_name` 是 `"Bash"`、`tool_input.command`，回覆用
+  `hookSpecificOutput.permissionDecision`。有五件事不一樣，每一件都足以讓你接好的
+  hook 從來不跑:
 
-  - The command runs **through a shell**, but from the **session's working
-    directory**, not the repo root, and Codex sets no project-directory
-    variable of its own. A bare `./…` path works from the root and breaks one
-    directory down; `"$(git rev-parse --show-toplevel)/…"` works from any depth.
-  - **The project must be trusted** in `~/.codex/config.toml`
-    (`[projects."<path>"] trust_level = "trusted"`), and the entry has to name
-    the **repo root exactly**: trust does not descend, so an entry for a parent
-    directory leaves a repo nested under it untrusted. A `-c` override does not
-    do it either — trust is read from the file, not the merged config.
-  - **Each hook must be reviewed.** A fresh clone's hooks are `untrusted` and
-    do not run; the review is a TUI flow, and the recorded hash changes
-    whenever the hook config changes. Non-interactive runs need
-    `--dangerously-bypass-hook-trust`.
-  - Under `codex exec` **both gates fail silently**: no hook line, no warning,
-    nothing runs. The trust gate is *not* silent everywhere else — the
-    app-server and the TUI print an `ERROR` naming the untrusted `.codex`
-    folder and load no project hooks from it. Adding `.codex/` to a repo that
-    is not a trusted project is therefore visible in every entry point except
-    the one this repo's own checks use. **This repo is such a repo**: nothing
-    under `~/.codex/config.toml` names its root, so the `.codex/hooks.json` it
-    now ships is inert here until someone adds the entry.
-  - `handlerType: command` is the only handler **shown to work**, which is not
-    the same as the only one Codex accepts. `prompt` and `agent` are refused
-    outright ("prompt hooks are not supported yet"). `mcp_tool` is parsed,
-    listed as an enabled project hook and actually dispatched — it failed here
-    only because the MCP server it named does not exist, so it is neither
-    proven to work nor refused. Related trap: the config parser takes only
-    `command|mcp_tool|prompt|agent`, and rejects `mcpTool` — the spelling
-    `hooks/list` itself prints back — as an unknown variant, which drops
-    **every** hook in that file, reported as a `hooks/list` warning and
-    nowhere at all under `codex exec`.
+  - 命令是**丟給 shell 跑**的，但工作目錄是 **session 當下的目錄**，
+    不是 repo root，而且 Codex 自己不設任何指向專案目錄的變數。直接寫 `./…`
+    在 root 下可以動，往下一層就壞；`"$(git rev-parse --show-toplevel)/…"`
+    則在任何深度都能動。
+  - **專案必須先被信任** —— 在 `~/.codex/config.toml` 裡
+    （`[projects."<path>"] trust_level = "trusted"`），而且那一筆要**點名 repo root
+    本身**:信任不會往下繼承，只寫了父目錄的話，巢狀在它底下的 repo 依然是
+    untrusted。用 `-c` 覆寫也沒用 —— 信任是從檔案讀的，不是從合併後的 config。
+  - **每一個 hook 都要逐一審過。** 剛 clone 下來的 hook 是 `untrusted`，不會跑；
+    審核是走 TUI 的流程，而且 hook 設定一改，記下來的 hash 就跟著變。
+    非互動的執行要加 `--dangerously-bypass-hook-trust`。
+  - 在 `codex exec` 底下，**兩道關卡都是無聲失敗**:沒有 hook 那一行、沒有警告、
+    什麼都不跑。信任那一道關卡在別的地方*並不*安靜 —— app-server 與 TUI 會印一行
+    `ERROR` 點名那個未被信任的 `.codex` 目錄，並且不從裡面載入任何 project hook。
+    也就是說，把 `.codex/` 加進一個不是受信任專案的 repo，在每一個入口都看得出來，
+    唯獨這個 repo 自己的檢查用的那一個看不出來。**這個 repo 正是這種 repo**:
+    `~/.codex/config.toml` 底下沒有任何一筆點名它的 root，所以它現在放的這份
+    `.codex/hooks.json` 在這裡是不會動的，直到有人把那一筆加上去。
+  - `handlerType: command` 是唯一**被實測證明會動**的 handler，但這跟「Codex 只收
+    這一種」不是同一回事。`prompt` 與 `agent` 會被直接拒絕（「prompt hooks are
+    not supported yet」）。`mcp_tool` 則是解析得過、列得出來是啟用中的 project
+    hook、也真的有被派送出去 —— 這裡會失敗只是因為它指名的那個 MCP server
+    不存在，所以它既沒被證明會動，也沒被拒絕。附帶一個陷阱:設定的 parser 只吃
+    `command|mcp_tool|prompt|agent`，而 `mcpTool` —— `hooks/list` 自己印回來的
+    就是這個拼法 —— 會被當成未知的變體拒掉，連帶讓那個檔案裡的**每一個**
+    hook 都不見；這件事只會在 `hooks/list` 以警告的形式報出來，`codex exec`
+    底下則完全不報。
 
-  Verified 2026-09-09: Codex **acts on** the deny. `codex exec` with both gates
-  cleared printed `hook: PreToolUse Blocked` and `Command blocked by PreToolUse
-  hook: …`, from the repo root and from a subdirectory, and a `gh` stub first on
-  `PATH` recorded zero invocations — the command did not run. This paragraph
-  said "not verified" until that run; the difference is a demonstration, not a
-  reading of the binary.
+  2026-09-09 實測:Codex 真的會**照著 deny 動作**。兩道關卡都清掉之後跑
+  `codex exec`，印出 `hook: PreToolUse Blocked` 與 `Command blocked by PreToolUse
+  hook: …`，從 repo root 跑跟從子目錄跑都一樣，而且排在 `PATH` 最前面的 `gh`
+  假替身一次都沒被叫到 —— 命令根本沒有執行。這段在那次執行之前寫的是
+  「未經驗證」；差別在於這是實際跑出來的，不是從 binary 裡讀出來的。
 
 ### agy (Antigravity)
 
@@ -249,20 +239,17 @@ script/verify-agents.sh all       # 或 claude / codex / agy
 也因為有 nonce 可以 grep，**log 不再事先清空**。以前那句 `: > "$LOG"` 只是把別的
 session 幾秒前寫的行洗掉，換不到任何東西。
 
-> **The Codex row here is judged inverted, not skipped — and the inversion is
-> new.** It was added together with the Codex hook wiring, in the same change;
-> it was not carried over from before it. Until then Codex ran the identical
-> `[ -s "$LOG" ]` assertion as the other two agents, which is exactly how an
-> agent with no probe hook wired came out PASS on another session's lines.
-> Why it exists now is narrow: **this repo wires no probe hook for Codex** —
-> `.codex/hooks.json` does not name `test_probe.sh` — so no line the probe
-> writes can be attributable to Codex, and the assertion "**no** line carries
-> this run's nonce" is one that can actually fail. That is a much smaller claim
-> than "Codex has no hook mechanism at all", which the same change disproved by
-> measurement (see the Codex section above). The output labels it `inverted` so
-> that nobody reads it as "Codex ran a hook". It costs almost nothing and still
-> catches two things: a probe hook wired for Codex behind our backs, or the
-> nonce leaking out of the Codex process into another agent's hook.
+> **Codex 這一項是反過來判，不是跳過 —— 而且這個反判是新的。** 它跟著 Codex 的
+> hook 接線一起進來，同一次改動，不是從以前沿用下來的。在那之前 Codex 跑的是和
+> 另外兩個 agent 一模一樣的 `[ -s "$LOG" ]` 斷言 —— 一個完全沒接 probe hook 的
+> agent，就是這樣靠別的 session 寫下的行拿到 PASS 的。現在它存在的理由很窄:
+> **這個 repo 沒有替 Codex 接 probe hook** —— `.codex/hooks.json` 裡沒有列
+> `test_probe.sh` —— 所以 probe 寫出來的任何一行都算不到 Codex 頭上，而
+> 「**沒有**任何一行帶著這次執行的 nonce」是一個真的可能失敗的斷言。這是一個比
+> 「Codex 根本沒有 hook 機制」小得多的說法 —— 後者正是同一次改動用實測推翻的
+> （見上面 Codex 一節）。輸出上也標成 `inverted`，免得有人把它讀成「Codex 跑了
+> hook」。它幾乎不花成本，也還抓得到兩件事:有人背著我們替 Codex 接上 probe
+> hook，或 nonce 從 Codex process 漏進別的 agent 的 hook。
 
 判定結果會回到 exit code 上:任何一項 FAIL → `exit 1`，全過 → `exit 0`，target
 打錯 → `exit 2`。舊版一律 `exit 0`，那不是決定，是 dispatch 最後一個 `command -v`
