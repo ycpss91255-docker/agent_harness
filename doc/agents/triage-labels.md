@@ -88,13 +88,31 @@ vocabulary, carries the five canonical roles and does **not** carry
 decision"; in that repo such an issue sits under `needs-triage` or carries no
 state label at all.
 
+That absence is the whole of the divergence in the canonical five. Four of
+them — `needs-triage`, `needs-info`, `ready-for-human` and `wontfix` — match
+this repo's colour and description text exactly, and only `ready-for-agent`
+differs: same name and colour (`0E8A16`), "Spec is fully specified and ready
+for an agent to implement" there against "Spec is complete: seams, first
+slice, gate, bound" here. As in `base`, `vendor_kit` keeps GitHub's stock
+wording for the three category labels where this repo rewrote all three.
+Because the two vocabularies agree on every role they share, the missing sixth
+is a real gap there and not a sign that the vocabulary went unadopted.
+
 ```
-$ gh label list -R ycpss91255-research/vendor_kit
+$ gh label list -R ycpss91255-research/vendor_kit --limit 100 --json name,color,description
 ```
 
-Verified 2026-09-08: `needs-triage`, `needs-info`, `ready-for-agent`,
-`ready-for-human`, `wontfix` — plus `backlog` and `upstream`, and no
-`needs-decision`.
+Verified 2026-10-30: 14 labels, the five canonical roles among them and no
+`needs-decision`. The 2026-09-08 revision of this section inventoried seven of
+that repo's labels, attributed `backlog` and `upstream` to it — `vendor_kit`
+carries neither — and was silent about nine it does carry.
+
+Only the five roles and the one absence are recorded here, deliberately. No
+commit pins a label set, so a date is the only pin a measurement of one can
+carry, and an inventory of a sibling repo's full set decays here with no
+signal that it has: that is what happened to the 2026-09-08 line, and to the
+`base` measurement taken the same day. The absence is the claim this section
+rests on, and the command above re-checks it in one call.
 
 ## Category labels
 
