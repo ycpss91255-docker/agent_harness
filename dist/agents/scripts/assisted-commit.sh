@@ -5,8 +5,10 @@
 #   .agents/scripts/assisted-commit.sh -m "hooks: wire the tagger for Codex"
 #   .agents/scripts/assisted-commit.sh -a -m "docs: state the trailer format"
 #
-# Every argument is forwarded to `git commit` untouched. This is `git commit`
-# with one thing added, so anything git accepts, this accepts.
+# Every argument this script does not claim itself is forwarded to `git commit`
+# untouched. It claims `--print-command`, `-h` and `--help` at the front, and
+# the three `--assisted-*` fields the hook appends to the tail. This is
+# `git commit` with one thing added, so anything git accepts, this accepts.
 #
 # THE TRAILER
 #
@@ -133,7 +135,7 @@
 # noisy when it breaks.
 #
 # `--print-command`, NOT `--dry-run`. `git commit --dry-run` already exists and
-# means something else -- it reports what would be committed -- and every
+# means something else -- it reports what would be committed -- and an unclaimed
 # argument here is forwarded to git, so taking that name would silently change a
 # flag git defines. `--print-command` prints the exact `git commit` invocation
 # this would run, quoted so it can be pasted, and runs nothing. It is a
