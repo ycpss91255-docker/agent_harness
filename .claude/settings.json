@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.agents/hooks/test_probe.sh PreToolUse",
+            "command": "AGENT_NAME=claude $CLAUDE_PROJECT_DIR/.agents/hooks/test_probe.sh PreToolUse",
             "timeout": 10
           },
           {
@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.agents/hooks/test_probe.sh UserPromptSubmit",
+            "command": "AGENT_NAME=claude $CLAUDE_PROJECT_DIR/.agents/hooks/test_probe.sh UserPromptSubmit",
             "timeout": 10
           }
         ]
