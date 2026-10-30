@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# redirect_gh_issue.sh -- PreToolUse hook (Claude Code matcher "Bash", agy "*").
+# redirect_gh_issue.sh -- PreToolUse hook (Claude Code matcher "Bash", agy "*",
+# Codex "*").
 #
 # WHAT THIS IS, AND WHAT IT IS NOT
 #
@@ -26,18 +27,54 @@
 # converge, so this file does not contain one.
 #
 # MATCHING IS DELIBERATELY CONSERVATIVE. The pattern is anchored at the START of
-# the command string -- leading whitespace and leading VAR=value assignments
-# only -- so `gh issue create` written inside a heredoc body, inside a quoted
-# example, or in a later segment of a `&&` chain is never matched. Forms that
-# are therefore MISSED on purpose include `gh -R owner/repo issue create`, a
-# call inside `$(...)`, and anything after a `&&`. That asymmetry is the design:
-# a missed direct call costs nothing, because the script is documented and this
-# hook is only a nudge, while a false deny blocks real work and catches no
-# mistake at all.
+# the command string -- leading whitespace, leading VAR=value assignments and
+# gh's own flags in front of the subcommand, nothing else -- so `gh issue
+# create` written inside a heredoc body, inside a quoted example, or in a later
+# segment of a `&&` chain is never matched. Forms that are therefore MISSED on
+# purpose include a call inside `$(...)` and anything after a `&&`. That
+# asymmetry is the design: a missed direct call costs nothing, because the
+# script is documented and this hook is only a nudge, while a false deny blocks
+# real work and catches no mistake at all.
+#
+# FLAGS BETWEEN `gh` AND `issue` ARE STEPPED OVER. cobra strips flags before it
+# resolves the subcommand, so `gh -R owner/repo issue create --title ...` is a
+# working create, and `-R` is the form automation uses to write to a DIFFERENT
+# repo -- the call least likely to be read by a human was the one this hook did
+# not cover. Stepping over a flag means knowing whether its value is a separate
+# word, and the rule is cobra's own, measured against gh 2.98.0 rather than
+# guessed:
+#   --repo=o/r, -R=o/r, -Ro/r   the value is ATTACHED; one word, nothing follows
+#   --repo o/r, -R o/r          the value is the NEXT word, and belongs to it
+# Skipping a flag without its value is the dangerous direction: `owner/repo`
+# would then be read as the subcommand. So a long `--name` and a lone `-x` are
+# both assumed to take a value, even where gh's is a boolean. That assumption
+# only ever costs a miss, never a false deny, and gh bears it out both ways:
+# `gh -h issue create` really does swallow `issue` as the value of an unknown
+# shorthand (gh answers `unknown command "create"`), while `gh --help issue
+# create` prints help and creates nothing.
+#
+# `--` IS NOT STEPPED OVER, deliberately. It terminates cobra's command
+# resolution, so `gh -- issue create` finds no subcommand at all (`unknown
+# command "issue" for "gh"`) and creates nothing; matching it would deny a
+# command that does not exist. .agents/scripts/gh-issue.sh gives `--` no special
+# treatment in its own argv parsing and says so -- it can afford to, because by
+# then the shell has already decided which program runs.
 #
 # `gh pr` is left alone entirely: `type(scope):` is still the convention for
 # commit messages and PR titles, and nothing about a pull request goes through
 # .agents/scripts/gh-issue.sh.
+#
+# HOOKS MATCHING THE SAME EVENT RUN IN PARALLEL, AND NOTHING SHORT-CIRCUITS.
+# Claude Code starts every hook matching an event at once. One hook's deny does
+# not stop another in the same array from executing; the results are aggregated
+# after all of them have finished, and the most restrictive outcome wins.
+#
+# The arrangement here rests on that. A redirect hook that refuses a command
+# SHAPE, wired alongside a body-routing hook that refuses an INLINE BODY, is
+# only safe because neither can mask the other: whichever fires, both verdicts
+# are collected, and a deny cannot be swallowed by a hook that ran first and
+# allowed. Wire a second hook on that basis, and not on an assumed
+# first-verdict-wins ordering -- there is none.
 #
 # The verdict lives only in the stdout JSON. This hook exits 0 whether it denies
 # or stays silent, exactly as the protocol requires, so a test that asserts on
@@ -46,16 +83,64 @@
 # as literal JSON rather than built by jq or python3 -- there is nothing here
 # that could need escaping.
 #
-# Codex has no hook mechanism of any kind, so nothing is wired for it. Unlike
-# the arrangement this replaces, that is no longer a gap in the rules: Codex
-# calls .agents/scripts/gh-issue.sh like everyone else, and the script is where
-# the rules are. All three agents get the checks; two of the three also get this nudge.
+# THIS HOOK FAILS CLOSED, so a typo here does not weaken a check -- it stops all
+# work. A shell syntax error anywhere in this file makes bash exit 2, which is
+# exactly the PreToolUse code for "block", so EVERY Bash call in the session is
+# denied until the file parses again; a consumer found this the hard way, with
+# an apostrophe dropped into the message string. (Fail-closed is the safer half
+# and is kept. The sibling enforce_gh_body_file.sh fails OPEN and silently when
+# its library is missing -- issue #6 -- so do not assume a shared convention.)
 #
 # agy runs the same script from .agents/hooks.json, whose working directory is
 # .agents/ -- hence the `./hooks/...` command there. Whether agy acts on Claude
 # Code's permissionDecision field is unverified (only script/verify-agents.sh,
 # which needs the three CLIs, can answer that), so on agy treat this as advice
 # that may not block.
+#
+# CODEX IS WIRED NOW, AND USED NOT TO BE. This file said for months that Codex
+# had no hook mechanism of any kind. That was true when it was measured and it
+# is not true now: codex-cli 0.153.2 reads project hooks from <repo>/.codex/,
+# and a hook wired there fires -- demonstrated on 2026-09-09, SessionStart and
+# PreToolUse both, with a payload whose field names are Claude Code's
+# (session_id, cwd, hook_event_name, tool_name "Bash", tool_input.command) and
+# whose PreToolUse output schema accepts exactly the hookSpecificOutput /
+# permissionDecision "deny" object printed below.
+#
+# What is measured, stated as measurements:
+#   MEASURED   the hook runs, from any depth in the repo, with the payload on
+#              stdin; Codex runs the command through a SHELL, from the SESSION's
+#              working directory rather than the repo root, and sets no
+#              CLAUDE_PROJECT_DIR or equivalent -- hence the
+#              "$(git rev-parse --show-toplevel)/..." command in
+#              .codex/hooks.json, and hence doc_root()'s git fallback being the
+#              branch Codex takes.
+#   MEASURED   .codex/ is the DIRECTORY, not .codex/hooks.json the single path:
+#              [[hooks.*]] blocks in <repo>/.codex/config.toml are read as
+#              project hooks too, and hooks/list returns both layers with
+#              source "project". What is measured as NOT read is .agents/ --
+#              the identical file placed there yields no entry. This file is
+#              wired from hooks.json only because that is what this harness
+#              ships; a consumer who keeps their hooks in .codex/config.toml is
+#              not doing it wrong.
+#   MEASURED   two trust gates, both silent under `codex exec`: the repo must be
+#              a trusted project in ~/.codex/config.toml -- named by its exact
+#              root path, trust does not descend from a parent entry -- and the
+#              hook itself must have been reviewed. Fail either and the hook
+#              does not run and nothing is printed. Outside `codex exec` the
+#              trust gate is loud: the app-server and the TUI print an ERROR
+#              naming the untrusted .codex folder.
+#   MEASURED   the deny is ACTED ON. This block said "NOT MEASURED" until
+#              2026-09-09, when a run watched it: with both gates cleared,
+#              `codex exec` on a `gh issue create` printed
+#              "hook: PreToolUse Blocked" and "Command blocked by PreToolUse
+#              hook: ...", from the repo root and from a subdirectory, and a
+#              `gh` stub first on PATH recorded zero invocations -- the command
+#              did not run. agy's standing is unchanged: still unverified.
+#
+# Which is why the split still matters, and matters more than before: the rules
+# live in .agents/scripts/gh-issue.sh, which every agent can call and which no
+# trust gate can switch off. All three agents now also get this nudge, on three
+# different conditions.
 #
 # Driven by script/ci/ci.sh check_redirect_hook with real stdin payloads.
 
@@ -87,7 +172,21 @@ readonly ASSIGN='[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+'
 # `.agents/scripts/gh-issue.sh`: the whitespace after the word is part of the
 # pattern, and `.agents/scripts/gh` is followed by `-issue.sh`, not a space.
 readonly GH='(gh|[^[:space:]]*/gh)'
-readonly DIRECT="^[[:space:]]*($ASSIGN)*${GH}[[:space:]]+issue[[:space:]]+(create|new|edit)([[:space:]]|$)"
+# Flags in front of the subcommand, stepped over one at a time. Split by where
+# the VALUE is, because getting that wrong reads a value as the subcommand.
+#
+# ATTACHED: after an `=` (`--repo=o/r`, `-R=o/r`), or straight onto a shorthand
+# (`-Ro/r` -- pflag's own form, the same one gh-issue.sh splits back apart in
+# its argv). One word, and the word after it is not its value.
+readonly FLAG_ATTACHED='(--?[A-Za-z][^[:space:]=]*=[^[:space:]]*|-[A-Za-z][^[:space:]=]+)[[:space:]]+'
+# SEPARATE: a long `--name`, or a shorthand alone. The next word is consumed as
+# its value. It has to look like a value -- not another flag -- so a run of
+# flags cannot silently eat the word after the last one.
+readonly FLAG_VALUED='(--[A-Za-z][^[:space:]=]*|-[A-Za-z])[[:space:]]+[^-[:space:]][^[:space:]]*[[:space:]]+'
+# Both alternatives require a letter after the dashes, which is what keeps `--`
+# out: it ends cobra's search for a subcommand rather than hiding one.
+readonly FLAGS="($FLAG_ATTACHED|$FLAG_VALUED)"
+readonly DIRECT="^[[:space:]]*($ASSIGN)*${GH}[[:space:]]+($FLAGS)*issue[[:space:]]+(create|new|edit)([[:space:]]|$)"
 
 # READ-ONLY FORMS ARE EXEMPT, AND THE ONLY ONE IS A HELP LOOKUP.
 # `gh issue create --help` and `gh issue edit --help` create and edit nothing:
@@ -108,7 +207,7 @@ readonly DIRECT="^[[:space:]]*($ASSIGN)*${GH}[[:space:]]+issue[[:space:]]+(creat
 # prefilled form in a browser, which is a create with a longer path, not a
 # read. The test is "provably mutates nothing", not "usually harmless".
 readonly BARE_ARG='[^-][^[:space:]]*[[:space:]]+'
-readonly HELP="^[[:space:]]*($ASSIGN)*${GH}[[:space:]]+issue[[:space:]]+(create|new|edit)[[:space:]]+($BARE_ARG)?(--help|-h)([[:space:]]|$)"
+readonly HELP="^[[:space:]]*($ASSIGN)*${GH}[[:space:]]+($FLAGS)*issue[[:space:]]+(create|new|edit)[[:space:]]+($BARE_ARG)?(--help|-h)([[:space:]]|$)"
 
 # `new` is gh's own alias for `create` (gh 2.98.0, alongside `ls` for `list`;
 # `edit` has no alias), so it is named here too -- it is a form a person types.
@@ -118,19 +217,38 @@ readonly HELP="^[[:space:]]*($ASSIGN)*${GH}[[:space:]]+issue[[:space:]]+(create|
 # one. .agents/scripts/gh-issue.sh is where init.sh puts the script in every
 # install; naming script/gh-issue.sh -- a path only this repo has -- told a
 # consumer to run something they had never been given.
-readonly MESSAGE='Use .agents/scripts/gh-issue.sh instead of calling gh issue create/edit directly.
+#
+# THE TEXT IS READ FROM A QUOTED HEREDOC, NOT A SINGLE-QUOTED STRING. It has no
+# apostrophe in it today, but prose acquires one the moment somebody writes
+# "doesn't", and inside '...' that ends the string and leaves the file
+# unparseable -- which, per the fail-closed note above, denies every Bash call
+# in the session rather than just losing this message. `<<'EOF'` interpolates
+# nothing and terminates on its own line, so no character in the body can end
+# it. The trailing newline the heredoc adds is stripped, so the emitted text is
+# byte for byte what it was.
+IFS= read -r -d '' MESSAGE <<'GH_ISSUE_MESSAGE'
+Use .agents/scripts/gh-issue.sh instead of calling gh issue create/edit directly.
 
   .agents/scripts/gh-issue.sh create --title "scope: what is broken" \
       --body-file /tmp/body.md --label enhancement --label needs-triage
   .agents/scripts/gh-issue.sh edit 12 --title "scope: a better statement of the problem"
 
 The script reads the title from its own argv, so it checks the real title and
-the real body: the scope prefix, the 80-character limit, the five body sections
-and the label roles. It always passes the body to gh as --body-file. Add
+the real body: the scope prefix, the 80-character limit, the body sections and
+the label roles. A body has to carry "## Context" and "## Out of scope";
+"## Problem", "## Proposal" and "## Acceptance criteria" are optional, because a
+small issue may collapse Proposal into Problem and drop Acceptance. Presence and
+order are separate questions: whichever sections are present appear in the
+canonical order -- Context, Problem, Proposal, Acceptance criteria, Out of
+scope. It always passes the body to gh as --body-file. Add
 --dry-run (or GH_ISSUE_DRY_RUN=1) to see the exact gh command without running
-it. It works for all three agents, including Codex, which has no hooks.
+it. It works for all three agents, and unlike this hook it does not depend on
+any agent having its hooks enabled and trusted.
 
-gh pr is unaffected.'
+gh pr is unaffected.
+GH_ISSUE_MESSAGE
+MESSAGE="${MESSAGE%$'\n'}"
+readonly MESSAGE
 
 # THE MESSAGE HAS TO STAND ON ITS OWN, BECAUSE dist/ DOES NOT SHIP doc/.
 # This hook is delivered into repos that have no doc/agents/issue-tracker.md,
@@ -144,7 +262,9 @@ readonly CITED='doc/agents/issue-tracker.md'
 
 # Repo-relative, so it is resolved against the repository root rather than
 # whatever directory the agent happened to be in. CLAUDE_PROJECT_DIR is set by
-# Claude Code; git answers for agy and for a hand-run; $PWD is the last resort.
+# Claude Code; git answers for agy, for Codex (which sets no such variable and
+# starts the hook in the session's directory) and for a hand-run; $PWD is the
+# last resort.
 doc_root() {
   if [[ -n "${CLAUDE_PROJECT_DIR:-}" && -d "${CLAUDE_PROJECT_DIR}" ]]; then
     printf '%s' "$CLAUDE_PROJECT_DIR"
