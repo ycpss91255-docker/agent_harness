@@ -201,7 +201,7 @@ usage:
   assisted-commit.sh [--print-command] [git commit flags...]
 
   git commit, plus an Assisted-by trailer when an agent is the one committing.
-  Every other argument is forwarded to git commit untouched.
+  Every other argument of yours is forwarded to git commit untouched.
 
   --print-command  print the exact git commit invocation this would run,
                    quoted so it can be pasted, and run nothing. Not --dry-run:
