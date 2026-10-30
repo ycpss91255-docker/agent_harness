@@ -53,6 +53,19 @@ supports project-level slash commands.
 Issues live in this repo's GitHub Issues (`ycpss91255-docker/agent_harness`),
 driven by the `gh` CLI. See `doc/agents/issue-tracker.md`.
 
+### Commits
+
+Commit with `.agents/scripts/assisted-commit.sh`, not `git commit` — it is
+`git commit` with an `Assisted-by:` trailer added when an agent is the one
+committing, and every argument it does not claim itself is forwarded to git
+untouched. Call it as a plain command, not inside a pipeline, a redirection or
+a `&&` chain — including `cd <worktree> && …`: the PreToolUse hook that supplies
+the ids appends them to the end of the command string, and leaves alone any
+command it cannot prove ends there. Leading `GIT_DIR=`/`GIT_WORK_TREE=`
+assignments are allowed, and are the way to commit in a linked worktree.
+A human commit gets no trailer and says nothing of its own.
+See `doc/agents/commit-trailer.md`.
+
 ### Triage labels
 
 The five canonical triage roles, each label string equal to its name, plus

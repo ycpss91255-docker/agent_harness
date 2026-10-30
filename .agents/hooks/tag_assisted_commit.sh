@@ -1,0 +1,1 @@
+../../dist/agents/hooks/tag_assisted_commit.sh

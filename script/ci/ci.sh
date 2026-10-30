@@ -17,6 +17,14 @@
 #              would run while making it impossible for it to reach github.com.
 #              Three layers now: the stub, a counted tripwire behind it, and an
 #              invalid credential in every case's environment
+#   assisted_commit the Assisted-by trailer only exists if something assembles
+#              it, and the mechanism has two halves that can drift apart: a
+#              PreToolUse hook that rewrites the command, and the wrapper that
+#              reads the fields back out of its own argv. Driven end to end
+#              against a throwaway repo under /tmp with GIT_DIR pinned into it,
+#              plus three negative controls -- an inert wrapper, an over-eager
+#              one and an inert hook -- because every assertion here is a
+#              comparison that could quietly stop comparing
 #   redirect_hook a PreToolUse hook signals its verdict on stdout and exits 0
 #              either way, so a hook that silently stopped firing looks exactly
 #              like a hook that approves of everything
@@ -35,7 +43,7 @@
 # and API credentials, so it stays a local check.
 #
 # Usage: script/ci/ci.sh [lint|json|frontmatter|structure|lock|gh_issue|
-#                         redirect_hook|hook_wiring|ship|all]
+#                         assisted_commit|redirect_hook|hook_wiring|ship|all]
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 1
 
@@ -340,7 +348,7 @@ gi_sandbox_is_live() {
     && [ -x "$GI_BIN/gh" ] && [ -x "$GI_TRAP/gh" ] \
     && [ -n "$GI_LOG" ] && [ -n "$GI_CASE_PATH" ]
 }
-trap 'gi_sandbox_cleanup; ship_cleanup' EXIT
+trap 'gi_sandbox_cleanup; ac_sandbox_cleanup; ship_cleanup' EXIT
 
 gi_sandbox_start() {
   GI_SANDBOX="$(mktemp -d)" || return 1
@@ -1373,7 +1381,7 @@ check_hook_wiring() {
   # Named, not globbed from dist/agents/hooks: a hook is listed here when it is
   # meant to fire for every agent, and the list is the statement of that. A new
   # hook that nothing wires is added here in the same change that ships it.
-  local -a wired=(redirect_gh_issue.sh)
+  local -a wired=(redirect_gh_issue.sh tag_assisted_commit.sh)
   local name f
   for name in "${wired[@]}"; do
     for f in .claude/settings.json dist/claude/settings.json; do
@@ -1460,6 +1468,594 @@ WIRED
       fi
     done
   done
+}
+
+# --- the assisted-commit sandbox --------------------------------------------
+#
+# SAFE BY ITS ENVIRONMENT, NOT BY A FLAG. Every case here runs against a git
+# repository created under /tmp for this check and thrown away with it, with
+# GIT_DIR and GIT_WORK_TREE exported INTO it. Those two are what make the
+# guarantee absolute rather than probable: with GIT_DIR set, git does not
+# discover a repository by walking up from the working directory at all, so a
+# defect in assisted-commit.sh -- or any future edit to it -- cannot reach this
+# repository even if it ran `git commit` from the wrong place. GIT_CONFIG_GLOBAL
+# and GIT_CONFIG_SYSTEM point at /dev/null as well, so the machine's identity,
+# its commit.gpgsign, its trailer.* settings and its hook templates are all out
+# of the picture and the assertions are about the wrapper.
+#
+# This suite has been on the wrong side of this once already: check_gh_issue's
+# guard used to be GH_ISSUE_DRY_RUN, a variable the code under test read, the
+# code had a defect on that path, and the suite filed three real GitHub issues.
+# So nothing here depends on --print-command, which is the equivalent flag on
+# this script. It is exercised as a feature, never relied on as a boundary.
+#
+# ASSISTED_BY_TOOL is NOT that flag again. It names which agent the wrapper
+# should believe is running -- it selects a code path, and cannot select a
+# repository. It is needed because the three paths this check has to drive are
+# "a human", "Claude Code" and "Codex", while the process tree that answers that
+# question in real use says whichever agent is running ci.sh, and cannot be made
+# to say the other two or none.
+#
+# The proof that all of this held is measured at the end rather than assumed:
+# this repository's HEAD is recorded before the cases and compared after, and
+# the throwaway repository is required to have gained commits. An inert check
+# fails the second assertion; a check that escaped its sandbox fails the first.
+AC_TMP=""; AC_REPO=""; AC_OUT=""; AC_ERR=""; AC_MSG=""; AC_STATUS=0
+AC_COMMITTED=0
+AC_HOOK_RAW=""; AC_HOOK_CMD=""; AC_HOOK_DECISION=""
+
+AC_SCRIPT=.agents/scripts/assisted-commit.sh
+AC_HOOK=.agents/hooks/tag_assisted_commit.sh
+
+# The ids the decided format is written with, so the assertions below are the
+# documented examples rather than a paraphrase of them. Full-length, because
+# truncating to eight characters is the wrapper's job and is what is asserted.
+AC_CC_SESSION=d5c2a46d-30af-4425-aa45-2a2e61881ef4
+AC_CC_AGENT=a021dc30-1111-2222-3333-444455556666
+AC_CX_SESSION=01a07ed9-aaaa-bbbb-cccc-ddddeeeeffff
+AC_CX_AGENT=b7f21e44-9999-8888-7777-666655554444
+# A pair that is WELL FORMED and belongs to nobody: the values a caller might
+# have copied out of an earlier session's transcript. They have to be valid ids,
+# or a case asserting that they are ignored could pass merely because they were
+# rejected as malformed.
+AC_STALE_SESSION=beefdead-5555-4444-3333-222211110000
+AC_STALE_AGENT=deadbeef-0000-1111-2222-333344445555
+
+ac_sandbox_cleanup() {
+  [ -n "$AC_TMP" ] && rm -rf -- "$AC_TMP"
+  AC_TMP=""; AC_REPO=""; AC_OUT=""; AC_ERR=""; AC_MSG=""
+  AC_HOOK_RAW=""; AC_HOOK_CMD=""; AC_HOOK_DECISION=""
+  return 0
+}
+
+ac_sandbox_is_live() {
+  [ -n "$AC_TMP" ] && [ -d "$AC_TMP" ] && [ -n "$AC_REPO" ] && [ -d "$AC_REPO/.git" ]
+}
+
+# The ONE statement of what a case can see. Called INSIDE every subshell, so
+# nothing it exports outlives that subshell or reaches the rest of ci.sh.
+ac_env() {
+  export GIT_DIR="$AC_REPO/.git"
+  export GIT_WORK_TREE="$AC_REPO"
+  export GIT_CONFIG_GLOBAL=/dev/null
+  export GIT_CONFIG_SYSTEM=/dev/null
+  export GIT_CONFIG_NOSYSTEM=1
+  export GIT_AUTHOR_NAME='ci.sh' GIT_AUTHOR_EMAIL='ci@example.invalid'
+  export GIT_COMMITTER_NAME='ci.sh' GIT_COMMITTER_EMAIL='ci@example.invalid'
+  export GIT_TERMINAL_PROMPT=0
+  # This repo's project dir is not the throwaway repo's, and the wrapper reads
+  # it to decide whether a document it could cite is present.
+  unset CLAUDE_PROJECT_DIR
+  # Built here, never inherited: a developer with this exported in their own
+  # shell would otherwise silently move every case onto a different path.
+  unset ASSISTED_BY_TOOL
+}
+
+ac_sandbox_start() {
+  AC_TMP="$(mktemp -d)" || return 1
+  AC_REPO="$AC_TMP/repo"
+  mkdir -p "$AC_REPO" || return 1
+  ( GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+      git init -q -b main "$AC_REPO" ) >/dev/null 2>&1 || return 1
+
+  # A stand-in that does everything the wrapper does EXCEPT add the trailer.
+  # The negative control below drives it through the same assertion as the real
+  # one and requires that assertion to FAIL, which is what says the assertion
+  # has teeth. Without it, an assertion that had quietly stopped comparing
+  # anything would report every case green.
+  cat >"$AC_TMP/inert-commit.sh" <<'INERT'
+#!/usr/bin/env bash
+# NOT assisted-commit.sh. A deliberately inert stand-in used by script/ci/ci.sh
+# check_assisted_commit as a negative control: it strips the injected fields and
+# commits without a trailer.
+set -u
+argv=()
+for a in "$@"; do case "$a" in --assisted-*) ;; *) argv+=("$a") ;; esac; done
+exec git commit "${argv[@]}"
+INERT
+  # ...and one that errs the other way: it tags everything, including a commit
+  # with no agent anywhere near it. The human path is the one requirement a
+  # wrapper can satisfy by being over-eager AND by being correct, so it needs a
+  # control of its own.
+  cat >"$AC_TMP/eager-commit.sh" <<'EAGER'
+#!/usr/bin/env bash
+# NOT assisted-commit.sh. A deliberately over-eager stand-in used by
+# script/ci/ci.sh check_assisted_commit as a negative control: it adds a trailer
+# unconditionally, including on a human commit.
+set -u
+argv=()
+for a in "$@"; do case "$a" in --assisted-*) ;; *) argv+=("$a") ;; esac; done
+exec git commit --trailer 'Assisted-by: claude-code session:deadbeef agent:cafed00d' "${argv[@]}"
+EAGER
+  # And an inert HOOK, for the same reason on the other half of the mechanism:
+  # a hook that has stopped rewriting prints nothing, which is also exactly what
+  # a correct hook prints for a command it must not touch.
+  cat >"$AC_TMP/inert-hook.sh" <<'INERTHOOK'
+#!/usr/bin/env bash
+# NOT tag_assisted_commit.sh. A deliberately inert stand-in used by
+# script/ci/ci.sh check_assisted_commit as a negative control: it reads the
+# payload and rewrites nothing.
+set -u
+cat >/dev/null
+exit 0
+INERTHOOK
+  chmod +x "$AC_TMP/inert-commit.sh" "$AC_TMP/eager-commit.sh" "$AC_TMP/inert-hook.sh" || return 1
+  return 0
+}
+
+ac_scratch_head() {
+  ( ac_env; git rev-parse HEAD 2>/dev/null ) || true
+}
+
+ac_scratch_count() {
+  local n; n="$( ac_env; git rev-list --count HEAD 2>/dev/null )" || n=0
+  printf '%s' "${n:-0}"
+}
+
+# Run one command in the throwaway repo, with something staged for it to commit.
+#
+#   ac_run <program> <tool> <file> <args...>
+#
+# <tool> says what ASSISTED_BY_TOOL is for this case:
+#   -       leave it unset, so the wrapper's own process-tree walk decides
+#   ""      set it to empty, which declares that no agent is present
+#   <name>  set it to that agent
+ac_run() {
+  local program="$1" tool="$2" file="$3"; shift 3
+  AC_STATUS=0; AC_OUT=""; AC_ERR=""; AC_MSG=""; AC_COMMITTED=0
+  if ! ac_sandbox_is_live; then
+    bad "the assisted-commit sandbox is not live; refusing to run: $program $*"
+    AC_STATUS=125
+    return 1
+  fi
+  local head_before; head_before="$(ac_scratch_head)"
+  printf 'content for %s\n' "$file" >"$AC_REPO/$file"
+  (
+    ac_env
+    cd "$AC_REPO" || exit 126
+    [ "$tool" = - ] || export ASSISTED_BY_TOOL="$tool"
+    git add -- "$file" >/dev/null 2>&1 || exit 126
+    exec "$program" "$@"
+  ) >"$AC_TMP/out" 2>"$AC_TMP/err"
+  AC_STATUS=$?
+  AC_OUT="$(cat "$AC_TMP/out")"
+  AC_ERR="$(cat "$AC_TMP/err")"
+  AC_MSG="$( ac_env; git log -1 --format=%B 2>/dev/null )"
+  # DID THIS CASE ACTUALLY COMMIT? AC_MSG is read from HEAD, so a case that
+  # committed nothing gets the PREVIOUS case's message -- and a mutation run
+  # caught exactly that: a wrapper that refused to commit was assessed against
+  # the trailer left behind by the case before it. Every assertion about a
+  # trailer is therefore also an assertion that HEAD moved.
+  [ "$(ac_scratch_head)" = "$head_before" ] || AC_COMMITTED=1
+  return 0
+}
+
+# The Assisted-by lines of the commit that was just made -- all of them, so a
+# wrapper that emitted two would not read as one.
+ac_trailer() {
+  printf '%s\n' "$AC_MSG" | grep '^Assisted-by:' | tr '\n' '|' | sed 's/|$//'
+}
+
+# The predicate, with no reporting in it, so a negative control can require it
+# to say no. Three things at once, because all three are requirements: the exact
+# trailer, exit 0, and whether stderr was supposed to carry anything.
+ac_produces() {                   # ac_produces <trailer> <quiet|loud> <program> <tool> <file> <args...>
+  local want="$1" noise="$2"; shift 2
+  ac_run "$@" || return 1
+  [ "$AC_STATUS" = 0 ] || return 1
+  [ "$AC_COMMITTED" = 1 ] || return 1
+  [ "$(ac_trailer)" = "$want" ] || return 1
+  case "$noise" in
+    quiet) [ -z "$AC_ERR" ] || return 1 ;;
+    loud)  [ -n "$AC_ERR" ] || return 1 ;;
+    *)     return 1 ;;
+  esac
+  return 0
+}
+
+ac_case() {                       # ac_case <label> <trailer> <quiet|loud> <program> <tool> <file> <args...>
+  local label="$1" want="$2" noise="$3" state=empty
+  shift
+  if ac_produces "$@"; then
+    ok "$label"
+  else
+    bad "$label"
+    [ -n "$AC_ERR" ] && state=present
+    [ "$AC_COMMITTED" = 1 ] || bad "  nothing was committed, so the trailer below is the previous case's"
+    bad "  got      exit $AC_STATUS, trailer \"$(ac_trailer)\", stderr $state"
+    bad "  expected exit 0, trailer \"$want\", stderr $noise"
+    [ -n "$AC_ERR" ] && printf '%s\n' "$AC_ERR" | head -3 | sed 's/^/         /'
+  fi
+}
+
+# A PreToolUse payload the way each runtime builds it. agent_id is present only
+# from inside a subagent, so "-" leaves it out entirely rather than empty --
+# absent and empty are different states and the sentinel exists to tell them
+# apart.
+ac_payload() {                    # ac_payload <session> <agent|-> <command>
+  python3 -c 'import json,sys
+d = {"session_id": sys.argv[1], "hook_event_name": "PreToolUse",
+     "tool_name": "Bash",
+     "tool_input": {"command": sys.argv[3], "description": "commit the work"}}
+if sys.argv[2] != "-":
+    d["agent_id"] = sys.argv[2]
+print(json.dumps(d))' "$1" "$2" "$3"
+}
+
+# Run a hook and take its answer apart. AC_HOOK_CMD is the rewritten command or
+# empty; AC_HOOK_DECISION is the permissionDecision or empty. Both are read from
+# the JSON rather than grepped, so a hook that emitted an unparseable line reads
+# as "said nothing" instead of as agreement.
+ac_hook_run() {                   # ac_hook_run <hook> <tool> <payload>
+  AC_HOOK_RAW="$(printf '%s\n' "$3" | ASSISTED_BY_TOOL="$2" "$1" 2>/dev/null)"
+  AC_HOOK_CMD="$(printf '%s' "$AC_HOOK_RAW" | python3 -c '
+import json, sys
+raw = sys.stdin.read().strip()
+if not raw:
+    raise SystemExit(0)
+try:
+    out = json.loads(raw)
+except Exception:
+    raise SystemExit(0)
+spec = out.get("hookSpecificOutput") or {}
+sys.stdout.write(((spec.get("updatedInput") or {}).get("command")) or "")')"
+  AC_HOOK_DECISION="$(printf '%s' "$AC_HOOK_RAW" | python3 -c '
+import json, sys
+raw = sys.stdin.read().strip()
+if not raw:
+    raise SystemExit(0)
+try:
+    out = json.loads(raw)
+except Exception:
+    raise SystemExit(0)
+sys.stdout.write((out.get("hookSpecificOutput") or {}).get("permissionDecision") or "")')"
+  return 0
+}
+
+# The predicate, again with no reporting, so the inert-hook control can require
+# a no.
+ac_hook_appends() {               # ac_hook_appends <hook> <tool> <payload> <original> <suffix>
+  ac_hook_run "$1" "$2" "$3"
+  [ -n "$AC_HOOK_CMD" ] || return 1
+  [ "$AC_HOOK_CMD" = "$4$5" ] || return 1
+  return 0
+}
+
+check_assisted_commit() {
+  head_ "assisted-commit.sh, the Assisted-by trailer"
+  command -v git >/dev/null || { bad "git is required"; return; }
+  command -v python3 >/dev/null || { bad "python3 is required"; return; }
+
+  # THE DELIVERED PATHS, not the files under dist/. init.sh creates these in
+  # every install and they are what the messages, the docs and the config files
+  # name, so a broken link fails here rather than in somebody else's clone.
+  local f
+  for f in "$AC_SCRIPT" "$AC_HOOK"; do
+    if [ ! -x "$f" ]; then
+      bad "$f is missing or not executable"
+      return
+    elif [ "$(readlink -f "$f")" != "$(readlink -f "dist/agents/${f#.agents/}")" ]; then
+      bad "$f does not resolve into dist/"
+    else
+      ok "$f is delivered and resolves into dist/"
+    fi
+    # A syntax error in either of these is not an ordinary bug. Both are wired
+    # as PreToolUse hooks or run from one, and bash exits 2 on a parse error,
+    # which is PreToolUse's code for "block" -- so a stray apostrophe denies
+    # every Bash call in the session until it is fixed.
+    if bash -n "$f" 2>/dev/null; then ok "$f parses"; else bad "$f does not parse"; fi
+  done
+
+  local harness_head_before
+  harness_head_before="$(git rev-parse HEAD 2>/dev/null)" || harness_head_before=""
+  [ -n "$harness_head_before" ] || { bad "cannot read this repo's HEAD to prove it is untouched"; return; }
+
+  ac_sandbox_start || { bad "cannot build the assisted-commit sandbox"; return; }
+  ok "sandbox: a throwaway repo at $AC_REPO, with GIT_DIR pinned into it"
+
+  # Absolute, because every case runs with the throwaway repo as its working
+  # directory. Resolved from the DELIVERED path, so these cases drive the file
+  # an agent would actually run.
+  local wrapper_abs="$PWD/$AC_SCRIPT"
+
+  local want_full="Assisted-by: claude-code session:d5c2a46d agent:a021dc30"
+  local want_main="Assisted-by: claude-code session:d5c2a46d agent:main"
+  local want_codex="Assisted-by: codex session:01a07ed9 agent:b7f21e44"
+  local want_tool="Assisted-by: claude-code"
+  local want_nosess="Assisted-by: claude-code agent:a021dc30"
+
+  # 1. THE HUMAN PATH. No trailer, exit 0, and NOT ONE BYTE on stderr. The last
+  #    of those is the requirement that keeps the wrapper installed: something
+  #    that printed a note on every hand-typed commit would be removed within a
+  #    week, and would then tag nothing at all.
+  ac_case "a human commit gets no trailer, no output, exit 0" \
+    "" quiet "$wrapper_abs" "" human.txt -m "human commit"
+
+  # 2. A SUBAGENT. The documented line, produced from full-length ids -- so this
+  #    also asserts the truncation to eight characters rather than assuming it.
+  ac_case "a subagent commit: $want_full" \
+    "$want_full" quiet "$wrapper_abs" - sub.txt -m "subagent commit" \
+    "--assisted-tool=claude-code" "--assisted-session=$AC_CC_SESSION" \
+    "--assisted-agent=$AC_CC_AGENT"
+
+  # 3. THE MAIN THREAD. The agent field says `main`, and this is SILENT: the id
+  #    is absent by design rather than by failure, and `main` is not a stand-in
+  #    for it -- it names the thread that committed, which is a thing that is
+  #    known. The literal reaches the trailer whole: it is a word and not an id,
+  #    so the truncation to eight characters that case 2 asserts must not touch
+  #    it, and no rule written for the shape of an id may reject it.
+  #    `agent:unknown` is what stays refused, because git log cannot tell a
+  #    placeholder from a real value.
+  ac_case "an agent main-thread commit says agent:main, silently" \
+    "$want_main" quiet "$wrapper_abs" - main.txt -m "main thread commit" \
+    "--assisted-tool=claude-code" "--assisted-session=$AC_CC_SESSION" \
+    "--assisted-agent=main"
+
+  # 4. CODEX, through the same wrapper and the same fields.
+  ac_case "a Codex subagent commit: $want_codex" \
+    "$want_codex" quiet "$wrapper_abs" - codex.txt -m "codex commit" \
+    "--assisted-tool=codex" "--assisted-session=$AC_CX_SESSION" \
+    "--assisted-agent=$AC_CX_AGENT"
+
+  # 5. THE BROKEN MECHANISM. An agent is running and nothing was injected. It
+  #    has to be LOUD and it has to COMMIT: refusing would turn a wiring problem
+  #    into lost work, and staying quiet would let a hook that stopped firing
+  #    pass for ordinary operation for months. Read against case 3 it is also
+  #    the third state made legible in the commit itself: `agent:<id>`,
+  #    `agent:main` and no agent field at all are three different trailers.
+  ac_case "an agent with no injection is loud on stderr and still commits" \
+    "$want_tool" loud "$wrapper_abs" claude-code broken.txt -m "broken hook commit"
+
+  # 6. ONE FIELD UNAVAILABLE. Omitted, not placeholdered, and loud because a
+  #    session id is not a field that is legitimately absent.
+  ac_case "an unusable session id is omitted, loudly" \
+    "$want_nosess" loud "$wrapper_abs" - nosession.txt -m "no session commit" \
+    "--assisted-tool=claude-code" "--assisted-session=not a valid id" \
+    "--assisted-agent=$AC_CC_AGENT"
+
+  # 7. A PATHSPEC SURVIVES. The fields are appended AFTER everything the author
+  #    wrote, so they land after a `--`. The wrapper pops them off the tail
+  #    rather than filtering the whole argument list, which is what keeps the
+  #    pathspec attached to the `--` it was written behind; a filter would have
+  #    had to know which git flags take a value.
+  ac_case "a trailing -- pathspec still reaches git" \
+    "$want_full" quiet "$wrapper_abs" - pathspec.txt -m "pathspec commit" \
+    -- pathspec.txt "--assisted-tool=claude-code" \
+    "--assisted-session=$AC_CC_SESSION" "--assisted-agent=$AC_CC_AGENT"
+
+  # 8. --print-command SHOWS AND DOES NOT DO. It is a convenience for a human
+  #    and this suite's safety does not rest on it -- the sandbox does -- but a
+  #    flag that claimed to change nothing and committed would be worse than no
+  #    flag.
+  local before; before="$(ac_scratch_head)"
+  ac_run "$wrapper_abs" - print.txt --print-command -m "printed commit" \
+    "--assisted-tool=claude-code" "--assisted-session=$AC_CC_SESSION" \
+    "--assisted-agent=$AC_CC_AGENT"
+  local want_print="git commit --trailer '$want_full' -m 'printed commit'"
+  if [ "$AC_STATUS" != 0 ]; then
+    bad "--print-command: expected exit 0, got $AC_STATUS"
+  elif [ "$AC_OUT" != "$want_print" ]; then
+    bad "--print-command printed:  $AC_OUT"
+    bad "--print-command expected: $want_print"
+  elif [ "$(ac_scratch_head)" != "$before" ]; then
+    bad "--print-command made a commit"
+  else
+    ok "--print-command prints the git command and commits nothing"
+  fi
+
+  # 9. A CALLER CANNOT PRE-EMPT THE HOOK. The hook appends, so its fields are
+  #    always the rightmost ones; anything a caller wrote is to their left.
+  #    Reading right to left and keeping the first value of each field seen is
+  #    what makes that positional fact decide the trailer. Assigning on every
+  #    pass -- which is what this did until the fields were read right to left
+  #    -- left the LEFTMOST duplicate standing, so a single stale
+  #    --assisted-agent= copied out of a transcript put somebody else's id in
+  #    the trailer, and `git log` cannot tell that from a right one.
+  ac_case "a stale agent id on the command line does not beat the hook's" \
+    "$want_full" loud "$wrapper_abs" - stale-agent.txt -m "stale agent commit" \
+    "--assisted-agent=$AC_STALE_AGENT" \
+    "--assisted-tool=claude-code" "--assisted-session=$AC_CC_SESSION" \
+    "--assisted-agent=$AC_CC_AGENT"
+
+  # 10. AND IT CANNOT FILL A FIELD THE HOOK LEFT OUT, which is the same wrong id
+  #    by a longer route: last-wins alone would let a stale --assisted-session=
+  #    supply the session for an injection that deliberately carried none. So
+  #    the hook's group is taken to start at its --assisted-tool=, and a field
+  #    to the left of that is dropped rather than used. The session is omitted
+  #    here, exactly as it is when the runtime reports no usable one.
+  ac_case "a stale session id does not fill a field the hook omitted" \
+    "$want_nosess" loud "$wrapper_abs" - stale-session.txt -m "stale session commit" \
+    "--assisted-session=$AC_STALE_SESSION" \
+    "--assisted-tool=claude-code" "--assisted-agent=$AC_CC_AGENT"
+
+  # --- the hook half ---------------------------------------------------------
+
+  local plain="$wrapper_abs -m \"hooks: tag the commit\""
+  local suffix_sub=" --assisted-tool=claude-code --assisted-session=$AC_CC_SESSION --assisted-agent=$AC_CC_AGENT"
+  local suffix_main=" --assisted-tool=claude-code --assisted-session=$AC_CC_SESSION --assisted-agent=main"
+  local payload
+
+  payload="$(ac_payload "$AC_CC_SESSION" "$AC_CC_AGENT" "$plain")"
+  if ac_hook_appends "$AC_HOOK" claude-code "$payload" "$plain" "$suffix_sub"; then
+    ok "the hook appends tool, session and agent to a subagent's command"
+  else
+    bad "the hook did not append the subagent fields; got: $AC_HOOK_CMD"
+  fi
+  # And it appends, rather than rewriting the front: an allowlist entry of
+  # Bash(<wrapper>:*) is matched against the REWRITTEN string, and a prepended
+  # `export ...;` was measured turning an allowed command into a denied one.
+  case "$AC_HOOK_CMD" in
+    "$plain"*) ok "the rewrite keeps the command prefix, so an allowlist still matches" ;;
+    *)         bad "the rewrite changed the command prefix: $AC_HOOK_CMD" ;;
+  esac
+  # The whole tool input survives, not just the command. Emitting a bare
+  # {"command": ...} would hand the runtime an input that had lost its
+  # description and timeout.
+  if printf '%s' "$AC_HOOK_RAW" | grep -q '"description": "commit the work"'; then
+    ok "the rewrite carries the rest of the tool input through"
+  else
+    bad "the rewrite dropped the other tool_input fields: $AC_HOOK_RAW"
+  fi
+  if [ -z "$AC_HOOK_DECISION" ]; then
+    ok "on Claude Code the hook emits no permissionDecision"
+  else
+    bad "on Claude Code the hook emitted permissionDecision \"$AC_HOOK_DECISION\", which waives the permission prompt"
+  fi
+
+  # No agent_id in the payload is the MAIN THREAD, and the hook has to speak
+  # anyway. Injecting nothing here would make the main thread and a dead hook
+  # indistinguishable, and case 3 and case 5 above demand different behaviour
+  # for them.
+  payload="$(ac_payload "$AC_CC_SESSION" - "$plain")"
+  if ac_hook_appends "$AC_HOOK" claude-code "$payload" "$plain" "$suffix_main"; then
+    ok "a payload with no agent_id gets the main sentinel, not silence"
+  else
+    bad "the hook did not inject the main sentinel; got: $AC_HOOK_CMD"
+  fi
+
+  # CODEX. Same rewrite, plus the decision its runtime requires: without it the
+  # updatedInput is discarded and the ORIGINAL command runs, which is a silent
+  # loss of the trailer rather than an error.
+  payload="$(ac_payload "$AC_CX_SESSION" "$AC_CX_AGENT" "$plain")"
+  local suffix_cx=" --assisted-tool=codex --assisted-session=$AC_CX_SESSION --assisted-agent=$AC_CX_AGENT"
+  if ac_hook_appends "$AC_HOOK" codex "$payload" "$plain" "$suffix_cx"; then
+    ok "the hook appends the Codex fields"
+  else
+    bad "the hook did not append the Codex fields; got: $AC_HOOK_CMD"
+  fi
+  if [ "$AC_HOOK_DECISION" = allow ]; then
+    ok "on Codex the hook also allows, which is what stops the rewrite being discarded"
+  else
+    bad "on Codex the hook emitted permissionDecision \"$AC_HOOK_DECISION\"; without \"allow\" Codex drops the rewrite"
+  fi
+
+  # WHAT IT MUST NOT TOUCH. Each of these is a way the append would land
+  # somewhere else or say something false. The last three are the already-tagged
+  # guard, and it is keyed on ANY of the fields rather than on --assisted-tool=
+  # alone: a command carrying only a stray --assisted-agent= used to be rewritten
+  # anyway, which appended a full set to the right of a field the wrapper was
+  # about to read.
+  local cmd
+  for cmd in \
+    'git commit -m "hooks: not the wrapper"' \
+    "$wrapper_abs -m x | tee /dev/null" \
+    "$wrapper_abs -m x && echo done" \
+    "$wrapper_abs -m x > /dev/null" \
+    "./not-assisted-commit.sh -m x" \
+    "$wrapper_abs -m x --assisted-tool=claude-code --assisted-agent=main" \
+    "$wrapper_abs -m x --assisted-agent=$AC_STALE_AGENT" \
+    "$wrapper_abs -m x --assisted-session=$AC_STALE_SESSION"
+  do
+    ac_hook_run "$AC_HOOK" claude-code "$(ac_payload "$AC_CC_SESSION" "$AC_CC_AGENT" "$cmd")"
+    if [ -z "$AC_HOOK_RAW" ]; then
+      ok "leaves alone:  $cmd"
+    else
+      bad "rewrote a command it must not touch: $cmd"
+      bad "  as: $AC_HOOK_CMD"
+    fi
+  done
+
+  # AND WHAT IT MUST STILL TOUCH. A commit message is made of exactly the
+  # characters the scan above rejects, so a blunt grep for them would refuse to
+  # tag ordinary commits -- a false negative that shows up only as a warning
+  # nobody can explain. The scan is quote-aware, and this is the case that says
+  # so.
+  local tricky="$wrapper_abs -m \"hooks: handle > and | and ; and #12 and \$(date)\""
+  payload="$(ac_payload "$AC_CC_SESSION" "$AC_CC_AGENT" "$tricky")"
+  if ac_hook_appends "$AC_HOOK" claude-code "$payload" "$tricky" "$suffix_sub"; then
+    ok "still tags a message full of shell metacharacters inside quotes"
+  else
+    bad "refused to tag a quoted message containing metacharacters: $tricky"
+  fi
+
+  # --- the whole chain, end to end -------------------------------------------
+  #
+  # The two halves are asserted separately above, which leaves the contract
+  # between them -- the flag names -- asserted by nothing. So the hook's own
+  # output is run as a command, exactly as the runtime would run it, and the
+  # trailer is read back out of a real commit.
+  payload="$(ac_payload "$AC_CC_SESSION" "$AC_CC_AGENT" "$wrapper_abs -m \"end to end commit\"")"
+  ac_hook_run "$AC_HOOK" claude-code "$payload"
+  if [ -z "$AC_HOOK_CMD" ]; then
+    bad "the hook produced no command to run end to end"
+  else
+    ac_run bash - e2e.txt -c "$AC_HOOK_CMD"
+    if [ "$AC_STATUS" != 0 ]; then
+      bad "end to end: the rewritten command exited $AC_STATUS: $(printf '%s' "$AC_ERR" | head -2 | tr '\n' ' ')"
+    elif [ "$AC_COMMITTED" != 1 ]; then
+      bad "end to end: the rewritten command made no commit, so the trailer below is the previous case's"
+    elif [ "$(ac_trailer)" != "$want_full" ]; then
+      bad "end to end: the commit carries \"$(ac_trailer)\""
+      bad "end to end: expected            \"$want_full\""
+    else
+      ok "end to end: the hook's own rewrite produces $want_full"
+    fi
+  fi
+
+  # --- the negative controls -------------------------------------------------
+  #
+  # Three stand-ins, each wrong in a different direction, driven through the
+  # assertions above. Every one of them MUST fail. An assertion that had stopped
+  # comparing anything would report the real files green and these green too,
+  # and this is the only thing in the check that would notice.
+  if ac_produces "$want_full" quiet "$AC_TMP/inert-commit.sh" - nc1.txt \
+       -m "inert control" "--assisted-tool=claude-code" \
+       "--assisted-session=$AC_CC_SESSION" "--assisted-agent=$AC_CC_AGENT"; then
+    bad "negative control: an inert wrapper that emits no trailer PASSED the subagent case"
+  else
+    ok "negative control: an inert wrapper fails the subagent case"
+  fi
+
+  if ac_produces "" quiet "$AC_TMP/eager-commit.sh" "" nc2.txt -m "eager control"; then
+    bad "negative control: a wrapper that tags every commit PASSED the human case"
+  else
+    ok "negative control: a wrapper that tags a human commit fails the human case"
+  fi
+
+  payload="$(ac_payload "$AC_CC_SESSION" "$AC_CC_AGENT" "$plain")"
+  if ac_hook_appends "$AC_TMP/inert-hook.sh" claude-code "$payload" "$plain" "$suffix_sub"; then
+    bad "negative control: a hook that rewrites nothing PASSED the rewrite case"
+  else
+    ok "negative control: a hook that rewrites nothing fails the rewrite case"
+  fi
+
+  # --- the sandbox held, measured rather than assumed ------------------------
+  local n; n="$(ac_scratch_count)"
+  case "$n" in ''|*[!0-9]*) n=0 ;; esac
+  if [ "$n" -gt 0 ]; then
+    ok "the throwaway repo took $n commit(s), so the cases really committed"
+  else
+    bad "the throwaway repo has no commits; the cases did not run"
+  fi
+  local harness_head_after
+  harness_head_after="$(git rev-parse HEAD 2>/dev/null)" || harness_head_after=""
+  if [ "$harness_head_after" = "$harness_head_before" ]; then
+    ok "this repo's HEAD is unchanged: $harness_head_before"
+  else
+    bad "this repo's HEAD MOVED during the check: $harness_head_before -> $harness_head_after"
+  fi
+
+  ac_sandbox_cleanup
 }
 
 # A throwaway install, removed however the check ends. Same reasoning as the gh
@@ -1713,7 +2309,7 @@ print("\n".join(sorted(seen)))')
 # so adding a check here gates pull requests immediately -- there is no second
 # place to keep in sync.
 CHECKS=(lint actionlint json frontmatter structure wiring lock gh_issue
-        redirect_hook hook_wiring ship)
+        assisted_commit redirect_hook hook_wiring ship)
 
 target="${1:-all}"
 if [ "$target" = all ]; then
