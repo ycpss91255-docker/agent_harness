@@ -40,7 +40,11 @@ Multi-context repo (presence of `CONTEXT-MAP.md` at the root):
 
 ## The vendored skills say `docs/adr/`
 
-This repo uses `doc/adr/`, as the trees above show. The vendored `domain-modeling` skill says the opposite — "ADRs live in `docs/adr/`" (`dist/agents/skills/domain-modeling/ADR-FORMAT.md`) — and every other vendored file that mentions the directory agrees with it rather than with us. They are not edited: they are third-party content installed by the pinned `skills` CLI and recorded in `skills-lock.json`, which `SKILLS.md` describes as pinning them by content hash, so a local edit is an undeclared divergence that the next `npx skills update` can overwrite. This document is read *before exploring* (see the top of this file), so an agent gets the correct path first, and a `docs/adr/` that appears anyway belongs at `doc/adr/`.
+This repo uses `doc/adr/`, as the trees above show. The vendored `domain-modeling` skill says the opposite — "ADRs live in `docs/adr/`" (`dist/agents/skills/domain-modeling/ADR-FORMAT.md`) — and every other vendored file that mentions the directory agrees with it rather than with us.
+
+They are not edited: they are third-party content installed by the pinned `skills` CLI and recorded in `skills-lock.json`, which `SKILLS.md` describes as pinning them by content hash, so a local edit is an undeclared divergence that the next `npx skills update` can overwrite.
+
+This document is read *before exploring* (see the top of this file), so an agent gets the correct path first, and a `docs/adr/` that appears anyway belongs at `doc/adr/`.
 
 The numbering width is a separate question and is still open: the examples above show `0001-`, no `doc/adr/` exists in this repo yet, and whoever writes the first ADR here settles it.
 
