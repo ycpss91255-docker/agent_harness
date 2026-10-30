@@ -7,8 +7,10 @@ state labels in total.
 
 This repo uses the **canonical names verbatim**: every label string equals
 its role name, so nothing has to be translated when a skill names a role.
-The sixth state role, `needs-decision`, is local to this repo: no skill names
-it, so `/triage` will never apply it on its own, and a human has to.
+The sixth state role, `needs-decision`, is absent from the skills' vocabulary:
+no skill names it, so `/triage` will never apply it on its own, and a human
+has to. That absence is from the skills, not from sibling repos — `base`
+carries the label too, as the next section records.
 
 | Label in mattpocock/skills | Label in our tracker | Meaning                                                                        |
 | -------------------------- | -------------------- | ------------------------------------------------------------------------------ |
@@ -78,7 +80,7 @@ as not having adopted the vocabulary at all, as carrying GitHub's full stock
 defaults, and as having `wontfix` for its only identical label; `base`'s
 labels have changed since and none of that holds.
 
-## `needs-decision` is local to this repo
+## `needs-decision` is absent from `ycpss91255-research/vendor_kit`
 
 `ycpss91255-research/vendor_kit`, the reference implementation of this
 vocabulary, carries the five canonical roles and does **not** carry

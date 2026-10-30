@@ -69,7 +69,7 @@ See `doc/agents/commit-trailer.md`.
 ### Triage labels
 
 The five canonical triage roles, each label string equal to its name, plus
-a sixth role local to this repo, `needs-decision`.
+`needs-decision`, a sixth state no skill names, so only a human applies it.
 See `doc/agents/triage-labels.md`.
 
 ### Domain docs
