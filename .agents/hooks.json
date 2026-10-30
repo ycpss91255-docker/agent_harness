@@ -17,5 +17,13 @@
           { "type": "command", "command": "./hooks/redirect_gh_issue.sh", "timeout": 10 }
         ] }
     ]
+  },
+  "assisted-commit-tag": {
+    "PreToolUse": [
+      { "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "./hooks/tag_assisted_commit.sh", "timeout": 10 }
+        ] }
+    ]
   }
 }
