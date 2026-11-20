@@ -442,7 +442,7 @@ check_body() {                    # check_body <path> <ready-for-agent:0|1>
           "  ${SECTIONS[1]}" \
           "  ${SECTIONS[2]}" \
           "  ${SECTIONS[3]}" \
-          "  ${SECTIONS[4]}          (required for a new issue)" \
+          "  ${SECTIONS[4]}          (required on ready-for-agent)" \
           "  ${SECTIONS[5]}    (required)" \
           "$(cite "$DOC")"
       fi
@@ -484,7 +484,7 @@ check_body() {                    # check_body <path> <ready-for-agent:0|1>
     refuse 'body shape, Seam is required' \
       "body file: $file" \
       "missing: ${SECTIONS[seam_k]}" \
-      'a new issue names the test file and the production file or files the' \
+      'a ready-for-agent issue names the test file and the production file or files the' \
       'change touches, so that one run can start without reading other issues:' \
       "  ${SECTIONS[seam_k]}" \
       '  - Test: <path>' \
