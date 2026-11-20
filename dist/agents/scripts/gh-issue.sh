@@ -74,10 +74,11 @@
 #           Context and Out of scope stay." Requiring all five refused a small
 #           issue the convention permits, which is a false deny -- the worst
 #           class of defect this script has.
-#           "## Seam" (after Acceptance criteria) is required on create, and the
+#           "## Seam" (after Acceptance criteria) is required, and the
 #           acceptance criteria may not defer to another issue ("acceptance rows
-#           for this task apply here"). edit applies both only to a body that
-#           already carries "## Seam". base#2015, agent_harness#51.
+#           for this task apply here"), only on an issue labelled
+#           ready-for-agent: a create passing that label, or an edit adding it.
+#           Other triage labels need no Seam. base#2015, agent_harness#51.
 #   labels  exactly one category (create) or at most one (edit), and at most one
 #           state. `backlog` is orthogonal and is not a state.
 #
@@ -354,8 +355,8 @@ check_title() {                   # check_title <title>
 # repeats is the same section written twice, not a second one, and is ignored --
 # the previous scan ignored it too, and refusing it names nothing an author can
 # act on.
-check_body() {                    # check_body <path> <create|edit>
-  local file="$1" mode="${2:-create}"
+check_body() {                    # check_body <path> <ready-for-agent:0|1>
+  local file="$1" ready="${2:-0}"
   # -r alone is not the test. A directory passes it, and the read loop below
   # then dies on the redirect with "Is a directory" followed by an unbound
   # variable -- a bash traceback where a usage error belongs. Each case is named
@@ -475,12 +476,11 @@ check_body() {                    # check_body <path> <create|edit>
       "$(cite "$DOC")"
   done
 
-  # The two self-contained rules. A new issue always carries a seam. An edit is
-  # held to them only when the body already has one: bodies that predate the
-  # section are left alone, the way the Context / Out of scope rules were
-  # introduced.
+  # The two self-contained rules bind only an issue labelled ready-for-agent
+  # (owner 2026-11-21, agent_harness#51): a create that passes the label, or an
+  # edit that adds it. Any other triage label needs no seam.
   local seam_k=4
-  if [[ "$mode" == create ]] && ((seen[seam_k] == 0)); then
+  if ((ready)) && ((seen[seam_k] == 0)); then
     refuse 'body shape, Seam is required' \
       "body file: $file" \
       "missing: ${SECTIONS[seam_k]}" \
@@ -492,7 +492,7 @@ check_body() {                    # check_body <path> <create|edit>
       'it goes after "## Acceptance criteria" and before "## Out of scope".' \
       "$(cite "$DOC")"
   fi
-  if ((seen[seam_k] && pointer_line)); then
+  if ((ready && pointer_line)); then
     refuse 'body shape, acceptance criteria must stand alone' \
       "body file: $file" \
       "line $pointer_line points at another issue: \"$POINTER_PHRASE\"" \
@@ -761,7 +761,11 @@ main() {
     body_file="$TMP_BODY"
   fi
 
-  [[ -n "$body_file" ]] && check_body "$body_file" "$sub"
+  local ready=0 al
+  for al in "${add_labels[@]}"; do
+    [[ "${al,,}" == ready-for-agent ]] && ready=1
+  done
+  [[ -n "$body_file" ]] && check_body "$body_file" "$ready"
   # A new issue has to arrive carrying its category; an edit only has to not
   # break the rule, because the issue already carries whatever it was given.
   local require_category=0
