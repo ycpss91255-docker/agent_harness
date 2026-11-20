@@ -385,6 +385,9 @@ quote() {
 # labels are unreadable, which is how a failed `gh issue view` looks.
 if [ "${1:-}" = issue ] && [ "${2:-}" = view ]; then
   canned="$(dirname "$0")/labels.txt"
+  # `--json body` is a read of the issue's current body, answered from body.txt
+  # the same way: no file means the body is unreadable.
+  case " $* " in *" body "*) canned="$(dirname "$0")/body.txt" ;; esac
   [ -f "$canned" ] || exit 1
   cat "$canned"
   exit 0
@@ -1013,6 +1016,31 @@ ready-for-human' >"$GI_BIN/labels.txt"
   gi_accepts "gh issue edit 12 --body-file $noseam" edit 12 --body-file "$noseam"
   rm -f "$GI_BIN/labels.txt"
   gi_accepts "gh issue edit 12 --body-file $noseam" edit 12 --body-file "$noseam"
+
+  # --- edit holds a body to the shape it already has (agent_harness#53) ------
+  # An edit requires Context and Out of scope only where the issue's CURRENT
+  # body carries them, read with `gh issue view N --json body`. The expected
+  # outcomes are the issue's acceptance criteria, not what the script prints.
+  cp "$noctx" "$GI_BIN/body.txt"
+  gi_accepts "gh issue edit 12 --body-file $noctx" edit 12 --body-file "$noctx"
+  cp "$noscope" "$GI_BIN/body.txt"
+  gi_accepts "gh issue edit 12 --body-file $noscope" edit 12 --body-file "$noscope"
+  cp "$body" "$GI_BIN/body.txt"
+  gi_refuses 'rule applied: edit --' edit 12 --body-file "$noctx"
+  gi_refuses 'rule applied: edit --' edit 12 --body-file "$noscope"
+  gi_accepts "gh issue edit 12 --body-file $body" edit 12 --body-file "$body"
+  # An unreadable current body (a failing `gh issue view`) falls back to the
+  # create rule, and the refusal says so.
+  rm -f "$GI_BIN/body.txt"
+  gi_refuses 'the current body could not be read, so the create rule applies' \
+    edit 12 --body-file "$noctx"
+  # The #51 rules are unchanged when the current body is readable too.
+  printf '%s\n' 'enhancement
+ready-for-agent' >"$GI_BIN/labels.txt"
+  cp "$seamed" "$GI_BIN/body.txt"
+  gi_refuses 'Seam is required' edit 12 --body-file "$noseam"
+  gi_refuses 'must stand alone' edit 12 --body-file "$pointer"
+  rm -f "$GI_BIN/labels.txt" "$GI_BIN/body.txt"
 
   # --- labels ----------------------------------------------------------------
   gi_refuses 'exactly one category' create --title "hooks: a new issue with no category" \
