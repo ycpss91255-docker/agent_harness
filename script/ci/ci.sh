@@ -691,6 +691,10 @@ Assert the verdict on stdout for a direct call and for three near misses.
 ## Acceptance criteria
 The table fails if the hook stops denying, or starts denying a heredoc.
 
+## Seam
+- Test: `script/ci/ci.sh`, `check_gh_issue`
+- Production: `dist/agents/scripts/gh-issue.sh`
+
 ## Out of scope
 The title rules, which the script owns.
 BODY
@@ -707,6 +711,10 @@ The label check compared names exactly, and GitHub does not.
 
 ## Problem
 `--label BUG --label enhancement` was counted as one category and filed as two.
+
+## Seam
+- Test: `script/ci/ci.sh`, `check_gh_issue`
+- Production: `dist/agents/scripts/gh-issue.sh`
 
 ## Out of scope
 The title rules, which are checked elsewhere in the same script.
@@ -767,6 +775,10 @@ quotes a fence has to wrap it in a longer one:
 ~~~
 ## Acceptance criteria
 ~~~
+
+## Seam
+- Test: `script/ci/ci.sh`, `check_gh_issue`
+- Production: `dist/agents/scripts/gh-issue.sh`
 
 ## Out of scope
 The title rules, which the script owns.
