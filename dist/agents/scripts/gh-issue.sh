@@ -77,7 +77,9 @@
 #           "## Seam" (after Acceptance criteria) is required, and the
 #           acceptance criteria may not defer to another issue ("acceptance rows
 #           for this task apply here"), only on an issue labelled
-#           ready-for-agent: a create passing that label, or an edit adding it.
+#           ready-for-agent: a create passing that label, an edit adding it, or
+#           an edit of an issue that already has it (read with gh issue view;
+#           an unreadable label set skips the check).
 #           Other triage labels need no Seam. base#2015, agent_harness#51.
 #   labels  exactly one category (create) or at most one (edit), and at most one
 #           state. `backlog` is orthogonal and is not a state.
@@ -765,6 +767,20 @@ main() {
   for al in "${add_labels[@]}"; do
     [[ "${al,,}" == ready-for-agent ]] && ready=1
   done
+  # An edit to an issue that ALREADY carries ready-for-agent is held to the same
+  # checks. Labels are read only when a body is being written and the edit has
+  # not added the label itself; a failed or unparsable read counts as not
+  # ready-for-agent and the checks are skipped (agent_harness#51).
+  if [[ "$sub" == edit && -n "$body_file" ]] && ((ready == 0)) \
+     && command -v gh >/dev/null 2>&1; then
+    local names
+    if names="$(gh issue view "$number" --json labels --jq '.labels[].name' 2>/dev/null)"; then
+      local nm
+      while IFS= read -r nm; do
+        [[ "${nm,,}" == ready-for-agent ]] && ready=1
+      done <<<"$names"
+    fi
+  fi
   [[ -n "$body_file" ]] && check_body "$body_file" "$ready"
   # A new issue has to arrive carrying its category; an edit only has to not
   # break the rule, because the issue already carries whatever it was given.
