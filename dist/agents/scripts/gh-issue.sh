@@ -472,10 +472,10 @@ check_body() {                    # check_body <path> <ready-for-agent:0|1> [<ve
   local file="$1" ready="${2:-0}" verb="${3:-create}" number="${4:-}"
   local -a gh_args=()
   (($# > 4)) && gh_args=("${@:5}")
-  # -r alone is not the test. A directory passes it, and the read loop below
-  # then dies on the redirect with "Is a directory" followed by an unbound
-  # variable -- a bash traceback where a usage error belongs. Each case is named
-  # separately because "no such file" and "that is a directory" send the author
+  # -r alone is not the test. A directory passes it, and the read loop in
+  # scan_sections then dies on the redirect with "Is a directory" followed by an
+  # unbound variable -- a bash traceback where a usage error belongs. Each case
+  # is named separately because "no such file" and "that is a directory" send the author
   # to different places.
   if [[ ! -e "$file" ]]; then
     fail_usage "no such body file: $file"
