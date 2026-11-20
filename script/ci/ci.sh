@@ -380,6 +380,15 @@ quote() {
     printf "'%s'" "${1//\'/\'\\\'\'}"
   fi
 }
+# A read of an issue's labels is not a mutation and is answered from a canned
+# file beside the stub, never logged with the mutations: no file means the
+# labels are unreadable, which is how a failed `gh issue view` looks.
+if [ "${1:-}" = issue ] && [ "${2:-}" = view ]; then
+  canned="$(dirname "$0")/labels.json"
+  [ -f "$canned" ] || exit 1
+  cat "$canned"
+  exit 0
+fi
 line="gh"
 for arg in "$@"; do line="$line $(quote "$arg")"; done
 printf '%s\n' "$line" >>"${GH_STUB_LOG:?the gh stub was run without GH_STUB_LOG}"
@@ -991,6 +1000,17 @@ BODY
   gi_accepts "gh issue edit 12 --body-file $noseam" edit 12 --body-file "$noseam"
   gi_accepts "gh issue edit 12 --body-file $pointer_noseam" \
     edit 12 --body-file "$pointer_noseam"
+  # An edit to an issue that ALREADY carries ready-for-agent is held to the same
+  # checks, read with `gh issue view N --json labels`. Unreadable labels (the
+  # stub has no canned answer) leave the edit alone, as above.
+  printf '%s\n' '{"labels":[{"name":"enhancement"},{"name":"ready-for-agent"}]}' >"$GI_BIN/labels.json"
+  gi_refuses 'Seam is required' edit 12 --body-file "$noseam"
+  gi_refuses 'must stand alone' edit 12 --body-file "$pointer"
+  gi_accepts "gh issue edit 12 --body-file $seamed" edit 12 --body-file "$seamed"
+  printf '%s\n' '{"labels":[{"name":"enhancement"},{"name":"ready-for-human"}]}' >"$GI_BIN/labels.json"
+  gi_accepts "gh issue edit 12 --body-file $noseam" edit 12 --body-file "$noseam"
+  rm -f "$GI_BIN/labels.json"
+  gi_accepts "gh issue edit 12 --body-file $noseam" edit 12 --body-file "$noseam"
 
   # --- labels ----------------------------------------------------------------
   gi_refuses 'exactly one category' create --title "hooks: a new issue with no category" \
