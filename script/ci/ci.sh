@@ -902,6 +902,65 @@ BODY
   gi_refuses '## Context' create --title "hooks: a body that only quotes its sections" \
     --body-file "$fencedonly" --label bug
 
+  # --- self-contained bodies (base#2015, agent_harness#51) -------------------
+  # A body names its seam, and its acceptance criteria state a result instead of
+  # pointing at another issue. The threat model is honest mistakes: the phrase
+  # a hurried author copies from a parent issue is what is detected, not every
+  # way of saying it.
+  local seamed="$tmp/seamed.md" noseam="$tmp/no-seam.md" pointer="$tmp/pointer.md"
+  local pointer_noseam="$tmp/pointer-no-seam.md" seam_late="$tmp/seam-late.md"
+  cat >"$seamed" <<'BODY'
+## Context
+The label check compared names exactly, and GitHub does not.
+
+## Acceptance criteria
+`--label BUG --label enhancement` is refused with "exactly one category".
+
+## Seam
+- Test: `script/ci/ci.sh`, `check_gh_issue`
+- Production: `dist/agents/scripts/gh-issue.sh`
+
+## Out of scope
+Crafted bodies written to slip past the check.
+BODY
+  grep -v '^## Seam$' "$seamed" | grep -v '^- ' >"$noseam"
+  # The pointer phrase lives in the acceptance criteria, which is where the
+  # mistake is made. Context quotes it freely (base#2015 does), so the same
+  # words there must not refuse a body.
+  sed 's/^`--label BUG.*$/#2000'"'"'s body stays as the record; its acceptance rows for this task apply here./' \
+    "$seamed" >"$pointer"
+  grep -v '^## Seam$' "$pointer" | grep -v '^- ' >"$pointer_noseam"
+  sed 's/^The label check.*$/The old text says "its acceptance rows for this task apply here"./' \
+    "$seamed" >"$tmp/quoted-in-context.md"
+  # Seam after Out of scope: the canonical place is between Acceptance criteria
+  # and Out of scope.
+  { sed -n '/^## Context$/,/^## Seam$/{/^## Seam$/!p}' "$seamed"
+    sed -n '/^## Out of scope$/,$p' "$seamed"
+    sed -n '/^## Seam$/,/^## Out of scope$/{/^## Out of scope$/!p}' "$seamed"
+  } >"$seam_late"
+
+  gi_accepts \
+    "gh issue create --title 'hooks: a self-contained body is accepted' --body-file $seamed --label enhancement" \
+    create --title "hooks: a self-contained body is accepted" \
+    --body-file "$seamed" --label enhancement
+  gi_refuses 'Seam is required' create --title "hooks: a body that names no seam" \
+    --body-file "$noseam" --label enhancement
+  gi_refuses 'must stand alone' create --title "hooks: criteria that point at a parent" \
+    --body-file "$pointer" --label enhancement
+  gi_accepts \
+    "gh issue create --title 'hooks: the phrase quoted in context is fine' --body-file $tmp/quoted-in-context.md --label enhancement" \
+    create --title "hooks: the phrase quoted in context is fine" \
+    --body-file "$tmp/quoted-in-context.md" --label enhancement
+  gi_refuses 'out of order' create --title "hooks: a seam after out of scope" \
+    --body-file "$seam_late" --label enhancement
+  # edit: both checks apply only to a body that already carries ## Seam, the way
+  # bodies that predate a section are left alone.
+  gi_refuses 'must stand alone' edit 12 --body-file "$pointer"
+  gi_accepts "gh issue edit 12 --body-file $seamed" edit 12 --body-file "$seamed"
+  gi_accepts "gh issue edit 12 --body-file $noseam" edit 12 --body-file "$noseam"
+  gi_accepts "gh issue edit 12 --body-file $pointer_noseam" \
+    edit 12 --body-file "$pointer_noseam"
+
   # --- labels ----------------------------------------------------------------
   gi_refuses 'exactly one category' create --title "hooks: a new issue with no category" \
     --body-file "$body" --label needs-triage
