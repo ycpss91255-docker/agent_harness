@@ -955,20 +955,39 @@ BODY
     "gh issue create --title 'hooks: a self-contained body is accepted' --body-file $seamed --label enhancement" \
     create --title "hooks: a self-contained body is accepted" \
     --body-file "$seamed" --label enhancement
-  gi_refuses 'Seam is required' create --title "hooks: a body that names no seam" \
+  # The Seam and pointer rules bind only an issue carrying ready-for-agent
+  # (owner 2026-11-21, agent_harness#51): on create when --label passes it, on
+  # edit when the edit adds it. Any other triage label needs no Seam.
+  gi_refuses 'Seam is required' create --title "hooks: a ready-for-agent body that names no seam" \
+    --body-file "$noseam" --label enhancement --label ready-for-agent
+  gi_accepts \
+    "gh issue create --title 'hooks: a ready-for-human body needs no seam' --body-file $noseam --label enhancement --label ready-for-human" \
+    create --title "hooks: a ready-for-human body needs no seam" \
+    --body-file "$noseam" --label enhancement --label ready-for-human
+  gi_accepts \
+    "gh issue create --title 'hooks: a body with no triage label needs no seam' --body-file $noseam --label enhancement" \
+    create --title "hooks: a body with no triage label needs no seam" \
     --body-file "$noseam" --label enhancement
   gi_refuses 'must stand alone' create --title "hooks: criteria that point at a parent" \
-    --body-file "$pointer" --label enhancement
+    --body-file "$pointer" --label enhancement --label ready-for-agent
   gi_accepts \
-    "gh issue create --title 'hooks: the phrase quoted in context is fine' --body-file $tmp/quoted-in-context.md --label enhancement" \
+    "gh issue create --title 'hooks: pointer criteria on a ready-for-human body' --body-file $pointer --label enhancement --label ready-for-human" \
+    create --title "hooks: pointer criteria on a ready-for-human body" \
+    --body-file "$pointer" --label enhancement --label ready-for-human
+  gi_accepts \
+    "gh issue create --title 'hooks: the phrase quoted in context is fine' --body-file $tmp/quoted-in-context.md --label enhancement --label ready-for-agent" \
     create --title "hooks: the phrase quoted in context is fine" \
-    --body-file "$tmp/quoted-in-context.md" --label enhancement
+    --body-file "$tmp/quoted-in-context.md" --label enhancement --label ready-for-agent
   gi_refuses 'out of order' create --title "hooks: a seam after out of scope" \
     --body-file "$seam_late" --label enhancement
-  # edit: both checks apply only to a body that already carries ## Seam, the way
-  # bodies that predate a section are left alone.
-  gi_refuses 'must stand alone' edit 12 --body-file "$pointer"
-  gi_accepts "gh issue edit 12 --body-file $seamed" edit 12 --body-file "$seamed"
+  # edit: an edit that adds ready-for-agent is held to both checks; one that
+  # does not, and whose label set cannot be read, is left alone.
+  gi_refuses 'Seam is required' edit 12 --add-label ready-for-agent --body-file "$noseam"
+  gi_refuses 'must stand alone' edit 12 --add-label ready-for-agent --body-file "$pointer"
+  gi_accepts "gh issue edit 12 --body-file $seamed --add-label ready-for-agent" \
+    edit 12 --add-label ready-for-agent --body-file "$seamed"
+  gi_accepts "gh issue edit 12 --body-file $noseam --add-label ready-for-human" \
+    edit 12 --add-label ready-for-human --body-file "$noseam"
   gi_accepts "gh issue edit 12 --body-file $noseam" edit 12 --body-file "$noseam"
   gi_accepts "gh issue edit 12 --body-file $pointer_noseam" \
     edit 12 --body-file "$pointer_noseam"
