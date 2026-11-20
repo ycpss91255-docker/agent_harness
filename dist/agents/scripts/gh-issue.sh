@@ -357,28 +357,15 @@ check_title() {                   # check_title <title>
 # repeats is the same section written twice, not a second one, and is ignored --
 # the previous scan ignored it too, and refusing it names nothing an author can
 # act on.
-check_body() {                    # check_body <path> <ready-for-agent:0|1>
-  local file="$1" ready="${2:-0}"
-  # -r alone is not the test. A directory passes it, and the read loop below
-  # then dies on the redirect with "Is a directory" followed by an unbound
-  # variable -- a bash traceback where a usage error belongs. Each case is named
-  # separately because "no such file" and "that is a directory" send the author
-  # to different places.
-  if [[ ! -e "$file" ]]; then
-    fail_usage "no such body file: $file"
-  elif [[ -d "$file" ]]; then
-    fail_usage "body file is a directory: $file" \
-      '--body-file takes the path of the file holding the body.'
-  elif [[ ! -f "$file" ]]; then
-    fail_usage "body file is not a regular file: $file"
-  elif [[ ! -r "$file" ]]; then
-    fail_usage "cannot read body file: $file"
-  fi
-
+scan_sections() {                 # scan_sections <path>
+  local file="$1"
   local n=${#SECTIONS[@]}
   local i k line="" last=-1
-  local -a seen=()
-  for ((i = 0; i < n; i++)); do seen[i]=0; done
+  _SEEN=()
+  _OOO_K=-1
+  _OOO_LAST=-1
+  _POINTER_LINE=0
+  for ((i = 0; i < n; i++)); do _SEEN[i]=0; done
 
   # A heading inside a fenced code block is a QUOTATION of the convention, not a
   # section of this body -- and quoting the section list is ordinary usage here,
@@ -397,7 +384,7 @@ check_body() {                    # check_body <path> <ready-for-agent:0|1>
   # which is why ```markdown opens a block rather than closing one.
   local fence_re='^(`{3,}|~{3,})(.*)$'
   local fence_char="" fence_len=0 bare marker rest
-  local in_acceptance=0 pointer_line=0 lineno=0
+  local in_acceptance=0 lineno=0
   while IFS= read -r line || [[ -n "$line" ]]; do
     # Trailing whitespace after a heading is invisible in a diff and must not
     # decide whether the body is valid.
@@ -428,31 +415,114 @@ check_body() {                    # check_body <path> <ready-for-agent:0|1>
     if [[ "$line" == '## '* ]]; then
       in_acceptance=0
       [[ "$line" == '## Acceptance criteria' ]] && in_acceptance=1
-    elif ((in_acceptance && pointer_line == 0)) \
+    elif ((in_acceptance && _POINTER_LINE == 0)) \
       && [[ "${line,,}" == *"$POINTER_PHRASE"* ]]; then
-      pointer_line=$lineno
+      _POINTER_LINE=$lineno
     fi
     for ((k = 0; k < n; k++)); do
       [[ "$line" == "${SECTIONS[k]}" ]] || continue
-      ((seen[k])) && break        # the same heading again; one section, not two
-      if ((k < last)); then
-        refuse 'body shape, sections out of order' \
-          "body file: $file" \
-          "\"${SECTIONS[k]}\" comes after \"${SECTIONS[last]}\"" \
-          'the sections that are present appear in this order:' \
-          "  ${SECTIONS[0]}          (required)" \
-          "  ${SECTIONS[1]}" \
-          "  ${SECTIONS[2]}" \
-          "  ${SECTIONS[3]}" \
-          "  ${SECTIONS[4]}          (required on ready-for-agent)" \
-          "  ${SECTIONS[5]}    (required)" \
-          "$(cite "$DOC")"
+      ((_SEEN[k])) && break        # the same heading again; one section, not two
+      if ((k < last && _OOO_K < 0)); then
+        _OOO_K=$k
+        _OOO_LAST=$last
       fi
-      seen[k]=1
+      _SEEN[k]=1
       last=$k
       break
     done
   done < "$file"
+}
+
+# An edit has to know what the issue's body carries TODAY, and it has to learn
+# it through the same scan the new body gets. Returns non-zero when the current
+# body cannot be read at all -- no gh, no network, wrong number -- and the
+# caller then falls back to the create rule and says so, because silently
+# relaxing a gate we could not evaluate is how a gate stops meaning anything
+# (agent_harness#53, base#1281).
+current_body_sections() {         # current_body_sections <number> <gh-arg>...
+  local number="$1"; shift
+  [[ -n "$number" ]] || return 1
+  command -v gh >/dev/null 2>&1 || return 1
+
+  # Only --repo is forwarded: the rest of the passthrough is addressed to
+  # `gh issue edit`, and `gh issue view` would reject it.
+  local -a repo_flag=()
+  while (($#)); do
+    case "$1" in
+      --repo|-R)
+        if [[ -n "${2:-}" ]]; then repo_flag=("$1" "$2"); shift; fi ;;
+      --repo=*|-R?*) repo_flag=("$1") ;;
+    esac
+    shift
+  done
+
+  local tmp
+  tmp="$(mktemp "${TMPDIR:-/tmp}/gh-issue-current.XXXXXX")" || return 1
+  if ! gh issue view "$number" "${repo_flag[@]+"${repo_flag[@]}"}" \
+       --json body --jq '.body' >"$tmp" 2>/dev/null; then
+    rm -f "$tmp"
+    return 1
+  fi
+  scan_sections "$tmp"
+  rm -f "$tmp"
+  return 0
+}
+
+check_body() {                    # check_body <path> <ready-for-agent:0|1> [<verb> <number> <gh-arg>...]
+  local file="$1" ready="${2:-0}" verb="${3:-create}" number="${4:-}"
+  local -a gh_args=()
+  (($# > 4)) && gh_args=("${@:5}")
+  # -r alone is not the test. A directory passes it, and the read loop in
+  # scan_sections then dies on the redirect with "Is a directory" followed by an
+  # unbound variable -- a bash traceback where a usage error belongs. Each case
+  # is named separately because "no such file" and "that is a directory" send the author
+  # to different places.
+  if [[ ! -e "$file" ]]; then
+    fail_usage "no such body file: $file"
+  elif [[ -d "$file" ]]; then
+    fail_usage "body file is a directory: $file" \
+      '--body-file takes the path of the file holding the body.'
+  elif [[ ! -f "$file" ]]; then
+    fail_usage "body file is not a regular file: $file"
+  elif [[ ! -r "$file" ]]; then
+    fail_usage "cannot read body file: $file"
+  fi
+
+  scan_sections "$file"
+  local n=${#SECTIONS[@]}
+  local k
+  local -a seen=("${_SEEN[@]}")
+  local pointer_line=$_POINTER_LINE
+
+  if ((_OOO_K >= 0)); then
+    refuse 'body shape, sections out of order' \
+      "body file: $file" \
+      "\"${SECTIONS[_OOO_K]}\" comes after \"${SECTIONS[_OOO_LAST]}\"" \
+      'the sections that are present appear in this order:' \
+      "  ${SECTIONS[0]}          (required)" \
+      "  ${SECTIONS[1]}" \
+      "  ${SECTIONS[2]}" \
+      "  ${SECTIONS[3]}" \
+      "  ${SECTIONS[4]}          (required on ready-for-agent)" \
+      "  ${SECTIONS[5]}    (required)" \
+      "$(cite "$DOC")"
+  fi
+
+  # agent_harness#53 (base#1281). `create` must ARRIVE carrying the shape; an
+  # edit requires a required section only if the issue's CURRENT body carries
+  # it. Removing one it does carry is still refused.
+  local -a cur_seen=()
+  local have_current=0
+  local rule='create -- a new body arrives carrying the shape'
+  if [[ "$verb" == edit ]]; then
+    if current_body_sections "$number" "${gh_args[@]+"${gh_args[@]}"}"; then
+      cur_seen=("${_SEEN[@]}")
+      have_current=1
+      rule="edit -- the issue's current body decides what is required"
+    else
+      rule='edit, but the current body could not be read, so the create rule applies'
+    fi
+  fi
 
   local want
   for want in "${REQUIRED_SECTIONS[@]}"; do
@@ -460,9 +530,20 @@ check_body() {                    # check_body <path> <ready-for-agent:0|1>
       [[ "${SECTIONS[k]}" == "$want" ]] && break
     done
     ((seen[k])) && continue
+    if ((have_current)); then
+      ((cur_seen[k])) || continue
+      refuse 'body shape, this edit would remove a section the issue carries' \
+        "body file: $file" \
+        "would remove: $want" \
+        "rule applied: $rule" \
+        "the issue's current body carries this section. Scoping the gate to" \
+        'bodies that predate it does not license stripping one that has it.' \
+        "$(cite "$DOC")"
+    fi
     refuse 'body shape, Context and Out of scope are required' \
       "body file: $file" \
       "missing: $want" \
+      "rule applied: $rule" \
       'a body always carries these two:' \
       "  ${REQUIRED_SECTIONS[0]}" \
       "  ${REQUIRED_SECTIONS[1]}" \
@@ -781,7 +862,7 @@ main() {
       done <<<"$names"
     fi
   fi
-  [[ -n "$body_file" ]] && check_body "$body_file" "$ready"
+  [[ -n "$body_file" ]] && check_body "$body_file" "$ready" "$sub" "${number:-}" "${passthrough[@]+"${passthrough[@]}"}"
   # A new issue has to arrive carrying its category; an edit only has to not
   # break the rule, because the issue already carries whatever it was given.
   local require_category=0
