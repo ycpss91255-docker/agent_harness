@@ -74,6 +74,13 @@
 #           Context and Out of scope stay." Requiring all five refused a small
 #           issue the convention permits, which is a false deny -- the worst
 #           class of defect this script has.
+#           "## Seam" (after Acceptance criteria) is required, and the
+#           acceptance criteria may not defer to another issue ("acceptance rows
+#           for this task apply here"), only on an issue labelled
+#           ready-for-agent: a create passing that label, an edit adding it, or
+#           an edit of an issue that already has it (read with gh issue view;
+#           an unreadable label set skips the check).
+#           Other triage labels need no Seam. base#2015, agent_harness#51.
 #   labels  exactly one category (create) or at most one (edit), and at most one
 #           state. `backlog` is orthogonal and is not a state.
 #
@@ -141,6 +148,7 @@ readonly SECTIONS=(
   '## Problem'
   '## Proposal'
   '## Acceptance criteria'
+  '## Seam'
   '## Out of scope'
 )
 
@@ -153,6 +161,14 @@ readonly REQUIRED_SECTIONS=(
   '## Context'
   '## Out of scope'
 )
+
+# A body is self-contained (base#2015, agent_harness#51): it names its seam, and
+# its acceptance criteria state a result instead of pointing at another issue's
+# body. The phrase below is what a hurried author copies from a parent issue. It
+# is matched inside the Acceptance criteria section only, because Context may
+# quote it. Honest mistakes are the threat model; a reworded pointer is not
+# chased.
+readonly POINTER_PHRASE='acceptance rows for this task apply here'
 
 # doc/agents/triage-labels.md: one category role, at most one state role.
 # `backlog` is in neither list on purpose -- it is orthogonal to the state
@@ -341,8 +357,8 @@ check_title() {                   # check_title <title>
 # repeats is the same section written twice, not a second one, and is ignored --
 # the previous scan ignored it too, and refusing it names nothing an author can
 # act on.
-check_body() {                    # check_body <path>
-  local file="$1"
+check_body() {                    # check_body <path> <ready-for-agent:0|1>
+  local file="$1" ready="${2:-0}"
   # -r alone is not the test. A directory passes it, and the read loop below
   # then dies on the redirect with "Is a directory" followed by an unbound
   # variable -- a bash traceback where a usage error belongs. Each case is named
@@ -381,9 +397,11 @@ check_body() {                    # check_body <path>
   # which is why ```markdown opens a block rather than closing one.
   local fence_re='^(`{3,}|~{3,})(.*)$'
   local fence_char="" fence_len=0 bare marker rest
+  local in_acceptance=0 pointer_line=0 lineno=0
   while IFS= read -r line || [[ -n "$line" ]]; do
     # Trailing whitespace after a heading is invisible in a diff and must not
     # decide whether the body is valid.
+    lineno=$((lineno + 1))
     line="${line%"${line##*[![:space:]]}"}"
     bare="${line#"${line%%[![:space:]]*}"}"
     if [[ "$bare" =~ $fence_re ]]; then
@@ -407,6 +425,13 @@ check_body() {                    # check_body <path>
     # Inside a fence, and an unclosed fence runs to the end of the body: the
     # lines are code, and code is not this body's shape.
     [[ -n "$fence_char" ]] && continue
+    if [[ "$line" == '## '* ]]; then
+      in_acceptance=0
+      [[ "$line" == '## Acceptance criteria' ]] && in_acceptance=1
+    elif ((in_acceptance && pointer_line == 0)) \
+      && [[ "${line,,}" == *"$POINTER_PHRASE"* ]]; then
+      pointer_line=$lineno
+    fi
     for ((k = 0; k < n; k++)); do
       [[ "$line" == "${SECTIONS[k]}" ]] || continue
       ((seen[k])) && break        # the same heading again; one section, not two
@@ -419,7 +444,8 @@ check_body() {                    # check_body <path>
           "  ${SECTIONS[1]}" \
           "  ${SECTIONS[2]}" \
           "  ${SECTIONS[3]}" \
-          "  ${SECTIONS[4]}    (required)" \
+          "  ${SECTIONS[4]}          (required on ready-for-agent)" \
+          "  ${SECTIONS[5]}    (required)" \
           "$(cite "$DOC")"
       fi
       seen[k]=1
@@ -448,8 +474,35 @@ check_body() {                    # check_body <path>
       "  ${SECTIONS[2]}" \
       "  ${SECTIONS[3]}" \
       "  ${SECTIONS[4]}" \
+      "  ${SECTIONS[5]}" \
       "$(cite "$DOC")"
   done
+
+  # The two self-contained rules bind only an issue labelled ready-for-agent
+  # (owner 2026-11-21, agent_harness#51): a create that passes the label, or an
+  # edit that adds it. Any other triage label needs no seam.
+  local seam_k=4
+  if ((ready)) && ((seen[seam_k] == 0)); then
+    refuse 'body shape, Seam is required' \
+      "body file: $file" \
+      "missing: ${SECTIONS[seam_k]}" \
+      'a ready-for-agent issue names the test file and the production file or files the' \
+      'change touches, so that one run can start without reading other issues:' \
+      "  ${SECTIONS[seam_k]}" \
+      '  - Test: <path>' \
+      '  - Production: <path>' \
+      'it goes after "## Acceptance criteria" and before "## Out of scope".' \
+      "$(cite "$DOC")"
+  fi
+  if ((ready && pointer_line)); then
+    refuse 'body shape, acceptance criteria must stand alone' \
+      "body file: $file" \
+      "line $pointer_line points at another issue: \"$POINTER_PHRASE\"" \
+      'state the expected result in this issue: an input with its exact output,' \
+      'text or exit code. Criteria that refer to another issue'"'"'s body are not' \
+      'self-contained.' \
+      "$(cite "$DOC")"
+  fi
 }
 
 # CASE-INSENSITIVELY, because GitHub is. A label name is matched without regard
@@ -710,7 +763,25 @@ main() {
     body_file="$TMP_BODY"
   fi
 
-  [[ -n "$body_file" ]] && check_body "$body_file"
+  local ready=0 al
+  for al in "${add_labels[@]}"; do
+    [[ "${al,,}" == ready-for-agent ]] && ready=1
+  done
+  # An edit to an issue that ALREADY carries ready-for-agent is held to the same
+  # checks. Labels are read only when a body is being written and the edit has
+  # not added the label itself; a failed or unparsable read counts as not
+  # ready-for-agent and the checks are skipped (agent_harness#51).
+  if [[ "$sub" == edit && -n "$body_file" ]] && ((ready == 0)) \
+     && command -v gh >/dev/null 2>&1; then
+    local names
+    if names="$(gh issue view "$number" --json labels --jq '.labels[].name' 2>/dev/null)"; then
+      local nm
+      while IFS= read -r nm; do
+        [[ "${nm,,}" == ready-for-agent ]] && ready=1
+      done <<<"$names"
+    fi
+  fi
+  [[ -n "$body_file" ]] && check_body "$body_file" "$ready"
   # A new issue has to arrive carrying its category; an edit only has to not
   # break the rule, because the issue already carries whatever it was given.
   local require_category=0

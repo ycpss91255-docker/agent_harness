@@ -380,6 +380,15 @@ quote() {
     printf "'%s'" "${1//\'/\'\\\'\'}"
   fi
 }
+# A read of an issue's labels is not a mutation and is answered from a canned
+# file beside the stub, never logged with the mutations: no file means the
+# labels are unreadable, which is how a failed `gh issue view` looks.
+if [ "${1:-}" = issue ] && [ "${2:-}" = view ]; then
+  canned="$(dirname "$0")/labels.txt"
+  [ -f "$canned" ] || exit 1
+  cat "$canned"
+  exit 0
+fi
 line="gh"
 for arg in "$@"; do line="$line $(quote "$arg")"; done
 printf '%s\n' "$line" >>"${GH_STUB_LOG:?the gh stub was run without GH_STUB_LOG}"
@@ -691,6 +700,10 @@ Assert the verdict on stdout for a direct call and for three near misses.
 ## Acceptance criteria
 The table fails if the hook stops denying, or starts denying a heredoc.
 
+## Seam
+- Test: `script/ci/ci.sh`, `check_gh_issue`
+- Production: `dist/agents/scripts/gh-issue.sh`
+
 ## Out of scope
 The title rules, which the script owns.
 BODY
@@ -707,6 +720,10 @@ The label check compared names exactly, and GitHub does not.
 
 ## Problem
 `--label BUG --label enhancement` was counted as one category and filed as two.
+
+## Seam
+- Test: `script/ci/ci.sh`, `check_gh_issue`
+- Production: `dist/agents/scripts/gh-issue.sh`
 
 ## Out of scope
 The title rules, which are checked elsewhere in the same script.
@@ -767,6 +784,10 @@ quotes a fence has to wrap it in a longer one:
 ~~~
 ## Acceptance criteria
 ~~~
+
+## Seam
+- Test: `script/ci/ci.sh`, `check_gh_issue`
+- Production: `dist/agents/scripts/gh-issue.sh`
 
 ## Out of scope
 The title rules, which the script owns.
@@ -901,6 +922,97 @@ BODY
     --body-file "$fenced" --label bug
   gi_refuses '## Context' create --title "hooks: a body that only quotes its sections" \
     --body-file "$fencedonly" --label bug
+
+  # --- self-contained bodies (base#2015, agent_harness#51) -------------------
+  # A body names its seam, and its acceptance criteria state a result instead of
+  # pointing at another issue. The threat model is honest mistakes: the phrase
+  # a hurried author copies from a parent issue is what is detected, not every
+  # way of saying it.
+  local seamed="$tmp/seamed.md" noseam="$tmp/no-seam.md" pointer="$tmp/pointer.md"
+  local pointer_noseam="$tmp/pointer-no-seam.md" seam_late="$tmp/seam-late.md"
+  cat >"$seamed" <<'BODY'
+## Context
+The label check compared names exactly, and GitHub does not.
+
+## Acceptance criteria
+`--label BUG --label enhancement` is refused with "exactly one category".
+
+## Seam
+- Test: `script/ci/ci.sh`, `check_gh_issue`
+- Production: `dist/agents/scripts/gh-issue.sh`
+
+## Out of scope
+Crafted bodies written to slip past the check.
+BODY
+  grep -v '^## Seam$' "$seamed" | grep -v '^- ' >"$noseam"
+  # The pointer phrase lives in the acceptance criteria, which is where the
+  # mistake is made. Context quotes it freely (base#2015 does), so the same
+  # words there must not refuse a body.
+  sed 's/^`--label BUG.*$/#2000'"'"'s body stays as the record; its acceptance rows for this task apply here./' \
+    "$seamed" >"$pointer"
+  grep -v '^## Seam$' "$pointer" | grep -v '^- ' >"$pointer_noseam"
+  sed 's/^The label check.*$/The old text says "its acceptance rows for this task apply here"./' \
+    "$seamed" >"$tmp/quoted-in-context.md"
+  # Seam after Out of scope: the canonical place is between Acceptance criteria
+  # and Out of scope.
+  { sed -n '/^## Context$/,/^## Seam$/{/^## Seam$/!p}' "$seamed"
+    sed -n '/^## Out of scope$/,$p' "$seamed"
+    sed -n '/^## Seam$/,/^## Out of scope$/{/^## Out of scope$/!p}' "$seamed"
+  } >"$seam_late"
+
+  gi_accepts \
+    "gh issue create --title 'hooks: a self-contained body is accepted' --body-file $seamed --label enhancement" \
+    create --title "hooks: a self-contained body is accepted" \
+    --body-file "$seamed" --label enhancement
+  # The Seam and pointer rules bind only an issue carrying ready-for-agent
+  # (owner 2026-11-21, agent_harness#51): on create when --label passes it, on
+  # edit when the edit adds it. Any other triage label needs no Seam.
+  gi_refuses 'Seam is required' create --title "hooks: a ready-for-agent body that names no seam" \
+    --body-file "$noseam" --label enhancement --label ready-for-agent
+  gi_accepts \
+    "gh issue create --title 'hooks: a ready-for-human body needs no seam' --body-file $noseam --label enhancement --label ready-for-human" \
+    create --title "hooks: a ready-for-human body needs no seam" \
+    --body-file "$noseam" --label enhancement --label ready-for-human
+  gi_accepts \
+    "gh issue create --title 'hooks: a body with no triage label needs no seam' --body-file $noseam --label enhancement" \
+    create --title "hooks: a body with no triage label needs no seam" \
+    --body-file "$noseam" --label enhancement
+  gi_refuses 'must stand alone' create --title "hooks: criteria that point at a parent" \
+    --body-file "$pointer" --label enhancement --label ready-for-agent
+  gi_accepts \
+    "gh issue create --title 'hooks: pointer criteria on a ready-for-human body' --body-file $pointer --label enhancement --label ready-for-human" \
+    create --title "hooks: pointer criteria on a ready-for-human body" \
+    --body-file "$pointer" --label enhancement --label ready-for-human
+  gi_accepts \
+    "gh issue create --title 'hooks: the phrase quoted in context is fine' --body-file $tmp/quoted-in-context.md --label enhancement --label ready-for-agent" \
+    create --title "hooks: the phrase quoted in context is fine" \
+    --body-file "$tmp/quoted-in-context.md" --label enhancement --label ready-for-agent
+  gi_refuses 'out of order' create --title "hooks: a seam after out of scope" \
+    --body-file "$seam_late" --label enhancement
+  # edit: an edit that adds ready-for-agent is held to both checks; one that
+  # does not, and whose label set cannot be read, is left alone.
+  gi_refuses 'Seam is required' edit 12 --add-label ready-for-agent --body-file "$noseam"
+  gi_refuses 'must stand alone' edit 12 --add-label ready-for-agent --body-file "$pointer"
+  gi_accepts "gh issue edit 12 --body-file $seamed --add-label ready-for-agent" \
+    edit 12 --add-label ready-for-agent --body-file "$seamed"
+  gi_accepts "gh issue edit 12 --body-file $noseam --add-label ready-for-human" \
+    edit 12 --add-label ready-for-human --body-file "$noseam"
+  gi_accepts "gh issue edit 12 --body-file $noseam" edit 12 --body-file "$noseam"
+  gi_accepts "gh issue edit 12 --body-file $pointer_noseam" \
+    edit 12 --body-file "$pointer_noseam"
+  # An edit to an issue that ALREADY carries ready-for-agent is held to the same
+  # checks, read with `gh issue view N --json labels`. Unreadable labels (the
+  # stub has no canned answer) leave the edit alone, as above.
+  printf '%s\n' 'enhancement
+ready-for-agent' >"$GI_BIN/labels.txt"
+  gi_refuses 'Seam is required' edit 12 --body-file "$noseam"
+  gi_refuses 'must stand alone' edit 12 --body-file "$pointer"
+  gi_accepts "gh issue edit 12 --body-file $seamed" edit 12 --body-file "$seamed"
+  printf '%s\n' 'enhancement
+ready-for-human' >"$GI_BIN/labels.txt"
+  gi_accepts "gh issue edit 12 --body-file $noseam" edit 12 --body-file "$noseam"
+  rm -f "$GI_BIN/labels.txt"
+  gi_accepts "gh issue edit 12 --body-file $noseam" edit 12 --body-file "$noseam"
 
   # --- labels ----------------------------------------------------------------
   gi_refuses 'exactly one category' create --title "hooks: a new issue with no category" \
